@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
@@ -17,12 +18,14 @@ import android.view.animation.DecelerateInterpolator;
  * The bottom navigation bar — glassmorphism with a Neon Wave over the
  * active tab (me20.studio glass-nav variant 4, re-implemented natively).
  *
- * The bar itself is a translucent frosted panel (its backdrop is a blurred
- * copy of the ambient background, set up by MainActivity on API 31+ via
- * RenderEffect; the tint drawn here is the sub-31 fallback and the sheen
- * on every API level). The wave is a living sine stroke in neon cyan with
- * a violet under-glow: it continuously ripples, and when the tab changes
- * it slides to the new tab with a decelerating glide.
+ * The bar lives inside a BlurView (MainActivity wires it), so the frost
+ * under this tint is a real live blur of the content behind. The wave is
+ * a living sine stroke in neon cyan with a violet under-glow: it ripples
+ * continuously, and when the tab changes it glides to the new tab.
+ *
+ * Icons are Lucide (ISC) vector drawables. The active tab borrows Chip
+ * Navigation Bar's idea: it expands into a glass pill where the label is
+ * revealed next to the icon; inactive tabs stay icon + small caption.
  */
 public final class GlassNavView extends View {
 
@@ -34,13 +37,19 @@ public final class GlassNavView extends View {
     public static final int TAB_TV = 0, TAB_DOWNLOADER = 1, TAB_GAMES = 2,
             TAB_SONGS = 3, TAB_MENU = 4;
 
+    private static final int[] ICONS = {
+        R.drawable.ic_tv, R.drawable.ic_download, R.drawable.ic_games,
+        R.drawable.ic_songs, R.drawable.ic_menu,
+    };
+
     private final float density;
     private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint borderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint wavePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint waveGlowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint pillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Drawable[] icons = new Drawable[5];
 
     private int selected = TAB_SONGS;
     private float waveCenterX = -1;   // px, animated
@@ -52,6 +61,9 @@ public final class GlassNavView extends View {
     public GlassNavView(Context c) {
         super(c);
         density = c.getResources().getDisplayMetrics().density;
+        for (int i = 0; i < 5; i++) {
+            icons[i] = c.getResources().getDrawable(ICONS[i], null).mutate();
+        }
         wavePaint.setStyle(Paint.Style.STROKE);
         wavePaint.setStrokeWidth(2.6f * density);
         wavePaint.setStrokeCap(Paint.Cap.ROUND);
@@ -61,12 +73,7 @@ public final class GlassNavView extends View {
         waveGlowPaint.setStrokeWidth(8 * density);
         waveGlowPaint.setStrokeCap(Paint.Cap.ROUND);
         waveGlowPaint.setColor(Color.argb(52, 179, 136, 255));
-        iconPaint.setStyle(Paint.Style.STROKE);
-        iconPaint.setStrokeWidth(1.8f * density);
-        iconPaint.setStrokeCap(Paint.Cap.ROUND);
-        iconPaint.setStrokeJoin(Paint.Join.ROUND);
         labelPaint.setTextAlign(Paint.Align.CENTER);
-        labelPaint.setTextSize(11 * density);
         setLayerType(LAYER_TYPE_SOFTWARE, null); // shadowLayer needs it
     }
 
@@ -136,11 +143,11 @@ public final class GlassNavView extends View {
         float barTop = band * 0.55f;
         RectF bar = new RectF(0, barTop, w, h + 24 * density);
 
-        // Frosted tint + sheen.
+        // Frosted tint + sheen over the BlurView's live blur.
         glassPaint.setShader(new LinearGradient(0, barTop, 0, h,
-                new int[]{Color.argb(64, 255, 255, 255),
-                          Color.argb(30, 190, 210, 255),
-                          Color.argb(44, 255, 255, 255)},
+                new int[]{Color.argb(58, 255, 255, 255),
+                          Color.argb(26, 190, 210, 255),
+                          Color.argb(40, 255, 255, 255)},
                 new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
         glassPaint.setStyle(Paint.Style.FILL);
         cv.drawRoundRect(bar, 22 * density, 22 * density, glassPaint);
@@ -157,19 +164,62 @@ public final class GlassNavView extends View {
 
         drawWave(cv, w, barTop);
 
-        // Tabs: icon + label.
         float tabW = w / 5f;
         for (int i = 0; i < 5; i++) {
             float cx = tabW * i + tabW / 2f;
-            boolean active = i == selected;
-            int col = active ? Glass.NEON_CYAN : Color.argb(178, 205, 218, 235);
-            iconPaint.setColor(col);
-            labelPaint.setColor(col);
-            labelPaint.setFakeBoldText(active);
-            float iconCy = barTop + 21 * density;
-            drawIcon(cv, i, cx, iconCy, active);
-            cv.drawText(LABELS[i], cx, barTop + 47 * density, labelPaint);
+            if (i == selected) drawActiveTab(cv, i, cx, barTop);
+            else drawInactiveTab(cv, i, cx, barTop);
         }
+    }
+
+    private void drawIcon(Canvas cv, int idx, float cx, float cy, float sizeDp, int color) {
+        Drawable d = icons[idx];
+        d.setTint(color);
+        int half = (int) (sizeDp * density / 2);
+        d.setBounds((int) cx - half, (int) cy - half, (int) cx + half, (int) cy + half);
+        d.draw(cv);
+    }
+
+    /** Chip-Navigation-Bar move: the active tab expands into a pill and
+     *  its label reveals next to the icon. */
+    private void drawActiveTab(Canvas cv, int idx, float cx, float barTop) {
+        labelPaint.setTextSize(12.5f * density);
+        labelPaint.setTypeface(Glass.font(getContext(), true));
+        float textW = labelPaint.measureText(LABELS[idx]);
+        float iconSize = 20 * density;
+        float gap = 7 * density;
+        float padX = 13 * density;
+        float pillW = padX * 2 + iconSize + gap + textW;
+        float pillH = 36 * density;
+        float pillTop = barTop + 8 * density;
+        float left = cx - pillW / 2f;
+        // Keep the pill on screen even for edge tabs with long labels.
+        left = Math.max(6 * density, Math.min(left, getWidth() - pillW - 6 * density));
+        RectF pill = new RectF(left, pillTop, left + pillW, pillTop + pillH);
+        pillPaint.setStyle(Paint.Style.FILL);
+        pillPaint.setColor(Color.argb(44, 0, 229, 255));
+        cv.drawRoundRect(pill, pillH / 2, pillH / 2, pillPaint);
+        pillPaint.setStyle(Paint.Style.STROKE);
+        pillPaint.setStrokeWidth(Math.max(1f, density));
+        pillPaint.setColor(Color.argb(170, 0, 229, 255));
+        cv.drawRoundRect(pill, pillH / 2, pillH / 2, pillPaint);
+
+        float cy = pillTop + pillH / 2f;
+        drawIcon(cv, idx, left + padX + iconSize / 2f, cy, 20, Glass.NEON_CYAN);
+        labelPaint.setTextAlign(Paint.Align.LEFT);
+        labelPaint.setColor(Glass.NEON_CYAN);
+        float baseline = cy - (labelPaint.ascent() + labelPaint.descent()) / 2f;
+        cv.drawText(LABELS[idx], left + padX + iconSize + gap, baseline, labelPaint);
+        labelPaint.setTextAlign(Paint.Align.CENTER);
+    }
+
+    private void drawInactiveTab(Canvas cv, int idx, float cx, float barTop) {
+        int col = Color.argb(178, 205, 218, 235);
+        drawIcon(cv, idx, cx, barTop + 20 * density, 21, col);
+        labelPaint.setTextSize(10 * density);
+        labelPaint.setTypeface(Glass.font(getContext(), false));
+        labelPaint.setColor(col);
+        cv.drawText(LABELS[idx], cx, barTop + 47 * density, labelPaint);
     }
 
     private void drawWave(Canvas cv, int w, float barTop) {
@@ -198,64 +248,6 @@ public final class GlassNavView extends View {
         double midRipple = Math.sin(wavePhase + Math.PI * 1.1);
         float dotY = baseY - (float) ((2.6 + 1.9 * midRipple) * density);
         cv.drawCircle(waveCenterX, dotY, 2.1f * density, dot);
-    }
-
-    private void drawIcon(Canvas cv, int idx, float cx, float cy, boolean active) {
-        float s = density; // scale unit
-        Path p = new Path();
-        switch (idx) {
-            case TAB_TV: {
-                RectF r = new RectF(cx - 10 * s, cy - 6 * s, cx + 10 * s, cy + 8 * s);
-                cv.drawRoundRect(r, 2.5f * s, 2.5f * s, iconPaint);
-                p.moveTo(cx - 6 * s, cy - 8 * s); p.lineTo(cx, cy - 13 * s); p.lineTo(cx + 6 * s, cy - 8 * s);
-                cv.drawPath(p, iconPaint);
-                break;
-            }
-            case TAB_DOWNLOADER: {
-                p.moveTo(cx, cy - 11 * s); p.lineTo(cx, cy + 3 * s);
-                p.moveTo(cx - 5 * s, cy - 2 * s); p.lineTo(cx, cy + 3 * s); p.lineTo(cx + 5 * s, cy - 2 * s);
-                p.moveTo(cx - 9 * s, cy + 9 * s); p.lineTo(cx + 9 * s, cy + 9 * s);
-                p.moveTo(cx - 9 * s, cy + 4 * s); p.lineTo(cx - 9 * s, cy + 9 * s);
-                p.moveTo(cx + 9 * s, cy + 4 * s); p.lineTo(cx + 9 * s, cy + 9 * s);
-                cv.drawPath(p, iconPaint);
-                break;
-            }
-            case TAB_GAMES: {
-                RectF r = new RectF(cx - 12 * s, cy - 7 * s, cx + 12 * s, cy + 7 * s);
-                cv.drawRoundRect(r, 6 * s, 6 * s, iconPaint);
-                p.moveTo(cx - 8 * s, cy); p.lineTo(cx - 3 * s, cy);
-                p.moveTo(cx - 5.5f * s, cy - 2.5f * s); p.lineTo(cx - 5.5f * s, cy + 2.5f * s);
-                cv.drawPath(p, iconPaint);
-                Paint fill = new Paint(iconPaint);
-                fill.setStyle(Paint.Style.FILL);
-                cv.drawCircle(cx + 4.5f * s, cy - 2 * s, 1.5f * s, fill);
-                cv.drawCircle(cx + 7.5f * s, cy + 2 * s, 1.5f * s, fill);
-                break;
-            }
-            case TAB_SONGS: {
-                // Quaver: two note heads, stems, beam.
-                Paint fill = new Paint(iconPaint);
-                fill.setStyle(Paint.Style.FILL);
-                cv.drawOval(new RectF(cx - 10 * s, cy + 4 * s, cx - 3.5f * s, cy + 9.5f * s), fill);
-                cv.drawOval(new RectF(cx + 2 * s, cy + 2 * s, cx + 8.5f * s, cy + 7.5f * s), fill);
-                p.moveTo(cx - 3.5f * s, cy + 6 * s); p.lineTo(cx - 3.5f * s, cy - 9 * s);
-                p.lineTo(cx + 8.5f * s, cy - 11 * s); p.lineTo(cx + 8.5f * s, cy + 4.5f * s);
-                cv.drawPath(p, iconPaint);
-                break;
-            }
-            case TAB_MENU: {
-                float g = 5.2f * s, r2 = 1.8f * s;
-                for (int dx = -1; dx <= 1; dx += 2) {
-                    for (int dy = -1; dy <= 1; dy += 2) {
-                        RectF cell = new RectF(cx + dx * g - 4.4f * s, cy + dy * g - 4.4f * s,
-                                cx + dx * g + 4.4f * s, cy + dy * g + 4.4f * s);
-                        cv.drawRoundRect(cell, r2, r2, iconPaint);
-                    }
-                }
-                break;
-            }
-            default: break;
-        }
     }
 
     @Override public boolean onTouchEvent(MotionEvent e) {

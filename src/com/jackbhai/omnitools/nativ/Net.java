@@ -53,13 +53,25 @@ public final class Net {
     }
 
     /** org.json optString with several candidate keys. */
-    public static String opt(JSONObject o, String... keys) {
-        if (o == null) return "";
+    public static String opt(JSONObject o, String... keys) {        if (o == null) return "";
         for (String k : keys) {
             String v = o.optString(k, "");
             if (v != null && !v.isEmpty() && !"null".equals(v)) return v;
         }
         return "";
+    }
+
+    public static String readFile(java.io.File f) throws Exception {
+        byte[] buf = new byte[(int) f.length()];
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            int off = 0;
+            while (off < buf.length) {
+                int n = in.read(buf, off, buf.length - off);
+                if (n < 0) break;
+                off += n;
+            }
+        }
+        return new String(buf, "UTF-8");
     }
 
     /** Decode the handful of HTML entities the catalogues ship in titles. */
@@ -68,5 +80,22 @@ public final class Net {
         return s.replace("&quot;", "\"").replace("&amp;", "&")
                 .replace("&#039;", "'").replace("&apos;", "'")
                 .replace("&lt;", "<").replace("&gt;", ">").trim();
+    }
+
+    /**
+     * Plain-Java decoder for the obfuscated endpoint strings (Base64, the
+     * same light obfuscation the PWA uses in src/core/endpoints.js, so no
+     * sensitive host appears as a plain string in the dex). Sec.decode()
+     * prefers the native implementation when libomnisec is loaded and
+     * falls back to this.
+     */
+    public static String ep(String b64) {
+        if (b64 == null || b64.isEmpty()) return "";
+        try {
+            return new String(java.util.Base64.getDecoder().decode(b64),
+                    StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

@@ -17,10 +17,13 @@ public final class PipedApi {
 
     private PipedApi() {}
 
+    /* Hosts stored encoded, decoded at runtime via Sec (see SaavnApi). */
+    private static String host(String enc) { return Sec.decode(enc); }
+
     static final String[] POOL = {
-        "https://api.piped.private.coffee",
-        "https://pipedapi.wireway.ch",
-        "https://pipedapi.ducks.party",
+        "aHR0cHM6Ly9hcGkucGlwZWQucHJpdmF0ZS5jb2ZmZWU=",
+        "aHR0cHM6Ly9waXBlZGFwaS53aXJld2F5LmNo",
+        "aHR0cHM6Ly9waXBlZGFwaS5kdWNrcy5wYXJ0eQ==",
     };
 
     public static final class Video {
@@ -52,7 +55,8 @@ public final class PipedApi {
 
     public static List<Video> search(String query) throws Exception {
         Exception last = null;
-        for (String base : POOL) {
+        for (String encBase : POOL) {
+            String base = host(encBase);
             try {
                 String url = base + "/search?q=" + URLEncoder.encode(query, "UTF-8")
                         + "&filter=all";
@@ -96,7 +100,7 @@ public final class PipedApi {
 
     public static Streams streams(String videoId) throws Exception {
         // wireway first: measured as the only mirror returning audio streams.
-        String[] order = {POOL[1], POOL[0], POOL[2]};
+        String[] order = {host(POOL[1]), host(POOL[0]), host(POOL[2])};
         Exception last = null;
         for (String base : order) {
             try {

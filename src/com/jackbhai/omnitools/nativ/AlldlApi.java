@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Link resolution for the Downloader section — the same broad resolver the
- * PWA's downloader uses (freeapi.pro /api/alldl, see src/core/endpoints.js
+ * PWA's downloader uses (the broad resolver, see src/core/endpoints.js
  * RESOLVE_API and src/tools/downloader.jsx mapResolver).
  *
  * A browser reaches it through a proxy chain because the resolver sends no
@@ -20,8 +20,8 @@ public final class AlldlApi {
 
     private AlldlApi() {}
 
-    public static final String RESOLVE_API = "https://freeapi.pro/api/alldl?url=";
-    public static final String RELAY = "https://omni-proxy.omni-jackbhai.workers.dev";
+    public static final String RESOLVE_API = Sec.decode("aHR0cHM6Ly9mcmVlYXBpLnByby9hcGkvYWxsZGw/dXJsPQ==");
+    public static final String RELAY = Sec.decode("aHR0cHM6Ly9vbW5pLXByb3h5Lm9tbmktamFja2JoYWkud29ya2Vycy5kZXY=");
 
     public static final class Option {
         public String label = "";

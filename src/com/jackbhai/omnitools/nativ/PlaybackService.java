@@ -19,10 +19,17 @@ public class PlaybackService extends MediaSessionService {
 
     private MediaSession session;
 
+    // So the Songs UI can attach the visualizer + waveform tooling to the
+    // real player's audio session (MediaController does not expose it).
+    private static volatile ExoPlayer sharedPlayer;
+
+    public static ExoPlayer sharedPlayer() { return sharedPlayer; }
+
     @Override
     public void onCreate() {
         super.onCreate();
         ExoPlayer player = new ExoPlayer.Builder(this).build();
+        sharedPlayer = player;
         session = new MediaSession.Builder(this, player).build();
 
         DefaultMediaNotificationProvider provider = new DefaultMediaNotificationProvider(
@@ -39,6 +46,7 @@ public class PlaybackService extends MediaSessionService {
 
     @Override
     public void onDestroy() {
+        sharedPlayer = null;
         if (session != null) {
             session.getPlayer().release();
             session.release();

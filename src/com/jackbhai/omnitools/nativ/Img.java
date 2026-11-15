@@ -33,6 +33,26 @@ public final class Img {
             into.setTag(null);
             return;
         }
+        // Glide first (memory + disk cache, request lifecycle handled by
+        // the library); ANY failure falls back to the tiny built-in
+        // loader below, so art can never be worse than before Glide.
+        try {
+            com.bumptech.glide.Glide.with(into.getContext())
+                    .load(url)
+                    .centerCrop()
+                    .into(into);
+            return;
+        } catch (Throwable glideDown) {
+            loadLegacy(url, into);
+        }
+    }
+
+    private static void loadLegacy(final String url, final ImageView into) {
+        if (url == null || url.isEmpty()) {
+            into.setImageBitmap(null);
+            into.setTag(null);
+            return;
+        }
         into.setTag(url);
         Bitmap hit = CACHE.get(url);
         if (hit != null) {

@@ -1,7 +1,5 @@
 package com.jackbhai.omnitools.nativ;
 
-import android.util.Base64;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -44,35 +42,44 @@ public final class SaavnApi {
 
     private SaavnApi() {}
 
-    private static final String API = "https://www.jiosaavn.com/api.php";
+    /* Endpoint hosts are stored Base64-encoded and decoded at runtime via
+     * Sec (native-preferred) — no sensitive host is a plain string in the
+     * dex. This is the same light obfuscation the PWA uses for its
+     * endpoint table (src/core/endpoints.js). */
+    private static String api() {
+        return Sec.decode("aHR0cHM6Ly93d3cuamlvc2Fhdm4uY29tL2FwaS5waHA=");
+    }
+    private static String relay() {
+        return Sec.decode("aHR0cHM6Ly9vbW5pLXByb3h5Lm9tbmktamFja2JoYWkud29ya2Vycy5kZXY=");
+    }
 
     private static final class Mirror {
         final String base, path, linkKey;
-        Mirror(String b, String p, String k) { base = b; path = p; linkKey = k; }
+        Mirror(String encBase, String p, String k) { base = Sec.decode(encBase); path = p; linkKey = k; }
     }
 
     /* Ordered by the PWA's measured latency (2026-11-12 re-measure). */
     private static final Mirror[] MIRRORS = {
-        new Mirror("https://shnwazdev-jiosaavn-apii.vercel.app",      "/api/search/songs?query=", "url"),
-        new Mirror("https://jio-saavn-api-iota.vercel.app",           "/api/search/songs?query=", "url"),
-        new Mirror("https://saavnx.vercel.app",                       "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavn-api-instance-mu.vercel.app",     "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavn-api-lovat.vercel.app",           "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavn-api-seven-xi.vercel.app",        "/api/search/songs?query=", "url"),
-        new Mirror("https://music45-api.vercel.app",                  "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavn-api.sharmaofficial.workers.dev", "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavnsearch.vercel.app",               "/search/songs?query=",     "link"),
-        new Mirror("https://saavn-api-eight.vercel.app",              "/api/search/songs?query=", "url"),
-        new Mirror("https://jiosaavn-api-tmkh.onrender.com",          "/api/search/songs?query=", "url"),
-        new Mirror("https://saavnapi-chi.vercel.app",                 "/api/search/songs?query=", "url"),
-        new Mirror("https://saavn-api-mocha.vercel.app",              "/api/search/songs?query=", "url"),
-        new Mirror("https://jio-saavn-api-sigma.vercel.app",          "/search/songs?query=",     "link"),
-        new Mirror("https://jiosaavn-api.anmolmaan5468.workers.dev",  "/api/search/songs?query=", "url"),
-        new Mirror("https://saavnapi-psi.vercel.app",                 "/api/search/songs?query=", "url"),
-        new Mirror("https://saavn-api-sable.vercel.app",              "/api/search/songs?query=", "url"),
-        new Mirror("https://saavn-api-mukesh.vercel.app",             "/api/search/songs?query=", "url"),
-        new Mirror("https://jio-saavn-api-nu.vercel.app",             "/search/songs?query=",     "link"),
-        new Mirror("https://jiosaavn-api-codyandersan.vercel.app",    "/search/songs?query=",     "link"),
+        new Mirror("aHR0cHM6Ly9zaG53YXpkZXYtamlvc2Fhdm4tYXBpaS52ZXJjZWwuYXBw", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW8tc2Fhdm4tYXBpLWlvdGEudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bngudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGktaW5zdGFuY2UtbXUudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGktbG92YXQudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGktc2V2ZW4teGkudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9tdXNpYzQ1LWFwaS52ZXJjZWwuYXBw", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGkuc2hhcm1hb2ZmaWNpYWwud29ya2Vycy5kZXY=", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bnNlYXJjaC52ZXJjZWwuYXBw", "/search/songs?query=", "link"),
+        new Mirror("aHR0cHM6Ly9zYWF2bi1hcGktZWlnaHQudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGktdG1raC5vbnJlbmRlci5jb20=", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bmFwaS1jaGkudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bi1hcGktbW9jaGEudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW8tc2Fhdm4tYXBpLXNpZ21hLnZlcmNlbC5hcHA=", "/search/songs?query=", "link"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGkuYW5tb2xtYWFuNTQ2OC53b3JrZXJzLmRldg==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bmFwaS1wc2kudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bi1hcGktc2FibGUudmVyY2VsLmFwcA==", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9zYWF2bi1hcGktbXVrZXNoLnZlcmNlbC5hcHA=", "/api/search/songs?query=", "url"),
+        new Mirror("aHR0cHM6Ly9qaW8tc2Fhdm4tYXBpLW51LnZlcmNlbC5hcHA=", "/search/songs?query=", "link"),
+        new Mirror("aHR0cHM6Ly9qaW9zYWF2bi1hcGktY29keWFuZGVyc2FuLnZlcmNlbC5hcHA=", "/search/songs?query=", "link"),
     };
 
     private static String enc(String s) throws Exception {
@@ -234,15 +241,9 @@ public final class SaavnApi {
     static String decryptUrl(String b64) {
         if (b64 == null || b64.isEmpty()) return "";
         try {
-            byte[] ct;
-            try {
-                ct = Base64.decode(b64, Base64.DEFAULT);
-            } catch (Throwable t) {
-                // JVM harness path (android.util.Base64 is a stub off-device).
-                ct = java.util.Base64.getMimeDecoder().decode(b64);
-            }
+            byte[] ct = java.util.Base64.getMimeDecoder().decode(b64);
             if (ct.length == 0 || ct.length % 8 != 0) return "";
-            DESKeySpec spec = new DESKeySpec("38346591".getBytes(StandardCharsets.US_ASCII));
+            DESKeySpec spec = new DESKeySpec(Sec.decode("MzgzNDY1OTE=").getBytes(StandardCharsets.US_ASCII));
             SecretKey key = SecretKeyFactory.getInstance("DES").generateSecret(spec);
             Cipher c = Cipher.getInstance("DES/ECB/PKCS5Padding");
             c.init(Cipher.DECRYPT_MODE, key);
@@ -295,10 +296,18 @@ public final class SaavnApi {
 
     /** The catalogue's own API, direct. Native has no CORS, so no relay. */
     public static List<Song> searchOfficial(String query, int limit) throws Exception {
-        String url = API + "?_format=json&_marker=0&api_version=4&ctx=web6dot0"
+        String url = api() + "?_format=json&_marker=0&api_version=4&ctx=web6dot0"
                 + "&__call=search.getResults&q=" + enc(query)
                 + "&n=" + limit + "&p=1";
-        JSONObject d = Net.getJsonObject(url, 8000);
+        JSONObject d;
+        try {
+            // The PWA's pattern: the catalogue call goes through the app's
+            // own relay worker first; direct is the fallback (native has
+            // no CORS, so direct genuinely works here).
+            d = Net.getJsonObject(relay() + "/?url=" + enc(url), 8000);
+        } catch (Exception relayDown) {
+            d = Net.getJsonObject(url, 8000);
+        }
         JSONArray results = d.optJSONArray("results");
         List<Song> out = new ArrayList<>();
         if (results != null) {

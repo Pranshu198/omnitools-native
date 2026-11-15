@@ -1,13 +1,32 @@
-# OmniTools Native — R8 config. App classes are referenced from the manifest
-# and by reflection-free framework entry points; keep them whole. Library
-# behaviour comes from the AARs' own consumer proguard.txt files (passed
-# separately by build-native.sh) plus webkit-proguard.txt.
--keep class com.jackbhai.omnitools.nativ.** { *; }
+# OmniTools Native — R8 config: minification + obfuscation ON.
+#
+# Only what must keep its name is kept:
+#  - the four components the manifest names (aapt2 has no AGP here to
+#    generate these keeps automatically),
+#  - Sec, whose native methods bind to libomnisec by JNI name,
+#  - Amplituda's API, whose methods bind to its .so by JNI name,
+#  - MediaButtonReceiver (named by media3-session's own manifest merger
+#    in a Gradle world; here it is in our manifest).
+# Everything else — all app logic, the vendored BlurView/visualizer
+# sources, and every library class not covered by an AAR's own consumer
+# rules — is free to shrink and rename.
+-keep public class com.jackbhai.omnitools.nativ.MainActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.WatchActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.WebFrameActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.PlaybackService { public <init>(); }
+-keep class com.jackbhai.omnitools.nativ.Sec { *; }
+-keep class linc.com.amplituda.** { *; }
 -keep class androidx.media3.session.MediaButtonReceiver { *; }
 -keepattributes Signature, InnerClasses, EnclosingMethod, *Annotation*
+-allowaccessmodification
+-overloadaggressively
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn org.checkerframework.**
 -dontwarn javax.annotation.**
+# Lottie + waveform reference appcompat classes we do not ship; the code
+# paths we use (LottieDrawable on a plain ImageView, the waveform view
+# itself) never load them.
+-dontwarn androidx.appcompat.**
 # Media3 1.5.1 references this API-35 framework class (guarded at runtime);
 # our --lib is android-34, where it does not exist yet.
 -dontwarn android.media.LoudnessCodecController

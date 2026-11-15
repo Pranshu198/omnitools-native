@@ -72,6 +72,34 @@ public final class MenuSection {
         subLp.topMargin = (int) Glass.dp(c, 6);
         col.addView(sub, subLp);
 
+        // Settings row: UI-sound mute toggle (Kenney sounds, persisted).
+        LinearLayout setRow = new LinearLayout(c);
+        setRow.setOrientation(LinearLayout.HORIZONTAL);
+        setRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        TextView sndLabel = Glass.text(c, "UI sounds", 13.5f, Glass.TEXT, false);
+        setRow.addView(sndLabel, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        final TextView sndChip = Glass.text(c, Sfx.muted() ? "Off" : "On",
+                13, Glass.TEXT, false);
+        sndChip.setBackground(Glass.neonPill(c, Glass.NEON_CYAN));
+        Glass.pad(sndChip, c, 14, 6, 14, 6);
+        sndChip.setOnClickListener(v -> {
+            if (Sfx.muted()) {
+                Sfx.setMuted(false);
+                Sfx.toggleOn();
+                sndChip.setText("On");
+            } else {
+                Sfx.toggleOff();
+                Sfx.setMuted(true);
+                sndChip.setText("Off");
+            }
+        });
+        setRow.addView(sndChip);
+        LinearLayout.LayoutParams setLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        setLp.topMargin = (int) Glass.dp(c, 10);
+        col.addView(setRow, setLp);
+
         EditText filter = new EditText(c);
         filter.setHint("Filter tools…");
         filter.setSingleLine(true);

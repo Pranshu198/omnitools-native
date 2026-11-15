@@ -1,0 +1,1 @@
+HOST=https://api.piped.private.coffee

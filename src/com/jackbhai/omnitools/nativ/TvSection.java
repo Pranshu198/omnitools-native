@@ -105,6 +105,11 @@ public final class TvSection {
     }
 
     private void runSearch() {
+        if (Guard.sensitiveBlocked(act)) {
+            status.setText("Unavailable in this copy of the app.");
+            return;
+        }
+        Sfx.tap();
         final String q = queryBox.getText().toString().trim();
         if (q.isEmpty()) return;
         final int g = ++gen;
@@ -129,6 +134,11 @@ public final class TvSection {
     }
 
     private void openVideo(PipedApi.Video v) {
+        if (Guard.sensitiveBlocked(act)) {
+            status.setText("Unavailable in this copy of the app.");
+            return;
+        }
+        Sfx.tap();
         Toast.makeText(act, "Loading stream…", Toast.LENGTH_SHORT).show();
         net.execute(() -> {
             try {

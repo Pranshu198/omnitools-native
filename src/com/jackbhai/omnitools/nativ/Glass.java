@@ -62,8 +62,24 @@ public final class Glass {
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        if (bold) t.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        t.setTypeface(font(c, bold));
         return t;
+    }
+
+    /* Inter (variable font, res/font/inter.ttf) is the app's UI typeface —
+     * the same family the design brief's Part 2 specifies. Loaded once. */
+    private static android.graphics.Typeface inter;
+
+    public static android.graphics.Typeface font(Context c, boolean bold) {
+        if (inter == null) {
+            try {
+                inter = c.getResources().getFont(R.font.inter);
+            } catch (Exception e) {
+                inter = android.graphics.Typeface.SANS_SERIF;
+            }
+        }
+        return bold ? android.graphics.Typeface.create(inter, android.graphics.Typeface.BOLD)
+                : inter;
     }
 
     public static void pad(View v, Context c, int l, int t, int r, int b) {

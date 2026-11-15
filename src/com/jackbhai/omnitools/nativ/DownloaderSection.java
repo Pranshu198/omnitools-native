@@ -54,6 +54,8 @@ public final class DownloaderSection {
     private TextView infoTitle;
     private String currentTitle = "download";
     private long activeDownloadId = -1;
+    private android.widget.ImageView tickView;
+    private com.airbnb.lottie.LottieDrawable tickDrawable;
 
     public DownloaderSection(Activity act) {
         this.act = act;
@@ -100,6 +102,21 @@ public final class DownloaderSection {
         stLp.topMargin = (int) Glass.dp(c, 10);
         col.addView(status, stLp);
 
+        tickView = new android.widget.ImageView(c);
+        tickView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams tickLp = new LinearLayout.LayoutParams(
+                (int) Glass.dp(c, 56), (int) Glass.dp(c, 56));
+        tickLp.gravity = Gravity.CENTER_HORIZONTAL;
+        tickLp.topMargin = (int) Glass.dp(c, 2);
+        col.addView(tickView, tickLp);
+        tickDrawable = new com.airbnb.lottie.LottieDrawable();
+        com.airbnb.lottie.LottieCompositionFactory.fromRawRes(c, R.raw.lottie_tick)
+                .addListener(comp -> {
+                    tickDrawable.setComposition(comp);
+                    tickView.setImageDrawable(tickDrawable);
+                })
+                .addFailureListener(e -> { });
+
         infoTitle = Glass.text(c, "", 15, Glass.TEXT, true);
         LinearLayout.LayoutParams itLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -120,6 +137,11 @@ public final class DownloaderSection {
             Pattern.compile("(?:v=|youtu\\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})");
 
     private void resolve() {
+        if (Guard.sensitiveBlocked(act)) {
+            status.setText("Unavailable in this copy of the app.");
+            return;
+        }
+        Sfx.tap();
         final String raw = urlBox.getText().toString().trim();
         if (!raw.startsWith("http")) {
             status.setText("Paste a full link first (starting with http).");
@@ -257,6 +279,12 @@ public final class DownloaderSection {
                                 DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
                         if (st == DownloadManager.STATUS_SUCCESSFUL) {
                             status.setText("Saved to Downloads: " + fileName);
+                            Sfx.success();
+                            tickView.setVisibility(View.VISIBLE);
+                            if (tickDrawable != null) {
+                                tickDrawable.stop();
+                                tickDrawable.playAnimation();
+                            }
                             cur.close();
                             return;
                         } else if (st == DownloadManager.STATUS_FAILED) {

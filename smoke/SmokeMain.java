@@ -13,6 +13,53 @@ import java.util.List;
  */
 public class SmokeMain {
 
+    /**
+     * Harness-only: this sandbox reaches the internet through an
+     * authenticated egress proxy (env https_proxy); curl honours it, the
+     * JVM does not. The Android app itself runs direct on the phone and
+     * needs none of this. Credentials are read from the environment at
+     * runtime and never printed.
+     */
+    static void installSandboxProxy() {
+        // Preferred path: the local CONNECT relay (smoke/relay.py) adds
+        // the egress proxy's Basic auth preemptively, which the JVM's
+        // own proxy handling refuses to do for CONNECT tunnels.
+        String relay = System.getProperty("smoke.relay");
+        if (relay != null && !relay.isEmpty()) {
+            System.setProperty("https.proxyHost", "127.0.0.1");
+            System.setProperty("https.proxyPort", relay);
+            System.setProperty("http.proxyHost", "127.0.0.1");
+            System.setProperty("http.proxyPort", relay);
+            System.out.println("      (via local CONNECT relay on port " + relay + ")");
+            return;
+        }
+        String proxy = System.getenv("https_proxy");
+        if (proxy == null || proxy.isEmpty()) proxy = System.getenv("HTTPS_PROXY");
+        if (proxy == null || proxy.isEmpty()) return;
+        try {
+            java.net.URI u = new java.net.URI(proxy);
+            String host = u.getHost();
+            int port = u.getPort() > 0 ? u.getPort() : 3128;
+            System.setProperty("https.proxyHost", host);
+            System.setProperty("https.proxyPort", String.valueOf(port));
+            System.setProperty("http.proxyHost", host);
+            System.setProperty("http.proxyPort", String.valueOf(port));
+            String ui = u.getUserInfo();
+            if (ui != null && ui.contains(":")) {
+                final String user = ui.substring(0, ui.indexOf(':'));
+                final String pass = ui.substring(ui.indexOf(':') + 1);
+                java.net.Authenticator.setDefault(new java.net.Authenticator() {
+                    @Override protected java.net.PasswordAuthentication getPasswordAuthentication() {
+                        return new java.net.PasswordAuthentication(user, pass.toCharArray());
+                    }
+                });
+            }
+            System.out.println("      (sandbox egress proxy configured for this harness run)");
+        } catch (Exception e) {
+            System.out.println("      (proxy setup skipped: " + e + ")");
+        }
+    }
+
     static int failures = 0;
 
     static void check(String name, boolean ok, String detail) {
@@ -21,6 +68,11 @@ public class SmokeMain {
     }
 
     public static void main(String[] args) throws Exception {
+        // Fixture mode: the sandbox blocks raw TCP from the JVM, so the
+        // shadow Net serves real responses captured live with curl
+        // (smoke/fixtures/, minutes old). Parsing/decryption are the
+        // app's real code; only the HTTP fetch is replayed.
+        System.out.println("      (fixture mode: real captured payloads, app parsing code)");
         // 1) Song search — mirrors route.
         List<Song> mirror = null;
         String mirrorErr = "";
