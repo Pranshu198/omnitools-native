@@ -1,0 +1,56 @@
+diff --git a/worker/omni-proxy.js b/worker/omni-proxy.js
+index c4a512d2..a9fe8e77 100644
+--- a/worker/omni-proxy.js
++++ b/worker/omni-proxy.js
+@@ -1470,6 +1470,51 @@ export default {
+       }
+     }
+ 
++    /* ---- native server-token gate (Track D) ----
++       POST/GET /native/ping proves the native-app token scheme end to
++       end: libomnisec mints token = HMAC-SHA256(key, "<ts>.<signer hex>")
++       and this route recomputes it with the mirror copy of the same
++       sealed key (XOR-obfuscated below, deobfuscated at runtime, the
++       same scheme the .so uses) over the release signer's known digest.
++       Missing headers -> 401, stale (>5 min skew) or mismatched -> 403,
++       valid -> 200 {ok:true}. Both sides carrying the key is a
++       bar-raiser against casual abuse of gated routes, not a root of
++       trust — a determined attacker can extract the key from the .so. */
++    if (url.pathname === '/native/ping') {
++      const TOKEN_KEY_OBF = [159, 154, 18, 42, 117, 83, 193, 60, 52, 154, 116, 208, 17, 222, 148, 6, 220, 117, 223, 229, 54, 8, 95, 201, 33, 213, 113, 146, 251, 197, 86, 204];
++      const TOKEN_XOR = [0x3C, 0x5A, 0x71, 0x26];
++      const EXPECTED_SIG = 'f829c10a04f60004101b65d1ef635e1dacb72d8aa9940869f2ed2baf478a1764';
++      if (request.method !== 'GET' && request.method !== 'POST') {
++        return json({ ok: false, error: 'method not allowed' }, 405);
++      }
++      const tsRaw = request.headers.get('X-Omni-Ts');
++      const tokRaw = request.headers.get('X-Omni-Token');
++      if (!tsRaw || !tokRaw) return json({ ok: false, error: 'missing token headers' }, 401);
++      const ts = parseInt(tsRaw, 10);
++      if (!Number.isFinite(ts)) return json({ ok: false, error: 'bad timestamp' }, 401);
++      const now = Math.floor(Date.now() / 1000);
++      if (Math.abs(now - ts) > 300) return json({ ok: false, error: 'stale token' }, 403);
++      try {
++        const keyBytes = new Uint8Array(TOKEN_KEY_OBF.map((b, i) => b ^ TOKEN_XOR[i % 4]));
++        const key = await crypto.subtle.importKey('raw', keyBytes,
++          { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
++        const mac = await crypto.subtle.sign('HMAC', key,
++          new TextEncoder().encode(`${ts}.${EXPECTED_SIG}`));
++        keyBytes.fill(0);
++        const expected = [...new Uint8Array(mac)]
++          .map((b) => b.toString(16).padStart(2, '0')).join('');
++        const given = tokRaw.trim().toLowerCase();
++        let diff = given.length ^ expected.length;
++        for (let i = 0; i < expected.length; i++) {
++          diff |= (given.charCodeAt(i) || 0) ^ expected.charCodeAt(i);
++        }
++        if (diff !== 0) return json({ ok: false, error: 'bad token' }, 403);
++        return json({ ok: true });
++      } catch (e) {
++        return json({ ok: false, error: 'verify failed' }, 500);
++      }
++    }
++
+     /* ---- plain CORS relay ---- */
+     let target = url.searchParams.get('url');
+     if (!target && url.pathname.length > 1) {

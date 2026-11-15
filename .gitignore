@@ -4,3 +4,6 @@ assets/
 *.idsig
 smoke/classes/
 smoke/json.jar
+
+projectm/src/.git/
+projectm/build-*/

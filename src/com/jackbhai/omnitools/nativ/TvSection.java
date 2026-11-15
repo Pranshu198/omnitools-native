@@ -142,7 +142,7 @@ public final class TvSection {
         Toast.makeText(act, "Loading stream…", Toast.LENGTH_SHORT).show();
         net.execute(() -> {
             try {
-                PipedApi.Streams s = PipedApi.streams(v.id);
+                PipedApi.Streams s = StreamRoutes.resolve(v.id);
                 final String videoUrl, audioUrl;
                 if (!s.progressive.isEmpty()) {
                     videoUrl = s.progressive;

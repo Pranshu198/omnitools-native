@@ -1,0 +1,79 @@
+===== arm64-v8a: cmake configure =====
+-- Git revision: 227172be4ab3c2b69a1310186522e16646e8944a
+-- Building for OpenGL Embedded Profile
+-- Could NOT find BISON (missing: BISON_EXECUTABLE) (Required is at least version "3.8")
+-- Could NOT find FLEX (missing: FLEX_EXECUTABLE) (Required is at least version "2.6")
+-- 
+-- libprojectM v4.1.8
+-- ==============================================
+-- 
+--     prefix:                      /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install
+--     libdir:                      lib
+--     includedir:                  include
+--     bindir:                      bin
+-- 
+--     compiler:                    /home/hatch/workspace/toolchain-ndk/android-ndk-r27c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++
+--     cflags:                      -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security 
+--     cxxflags:                    -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security  
+--     ldflags:                     -static-libstdc++ -Wl,--build-id=sha1 -Wl,--no-rosegment -Wl,--no-undefined-version -Wl,--fatal-warnings -Wl,--no-undefined -Qunused-arguments 
+-- 
+-- Features:
+-- ==============================================
+-- 
+--     Build shared libraries:      OFF
+--     Filesystem support:          C++17 STL
+--     SDL2:                        OFF
+--     OpenGL ES:                   ON
+--     Emscripten:                  OFF
+--     Use system GLM:              OFF
+--     Use system projectM-eval:    OFF
+--     Link UI with shared lib:     
+-- 
+-- Targets and applications:
+-- ==============================================
+-- 
+--     libprojectM:                 (always built)
+--     Playlist library:            OFF
+--     SDL2 Test UI:                OFF
+--     Tests:                       OFF
+--     Documentation:               OFF
+-- 
+-- Configuring done (0.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a
+===== arm64-v8a: build libprojectM =====
+[  0%] Built target glm
+[  4%] Built target SOIL2
+[ 15%] Built target projectM_eval
+[ 15%] Built target projectM_api
+[ 22%] Built target hlslparser
+[ 26%] Built target Audio
+[ 42%] Built target Renderer
+[ 91%] Built target MilkdropPreset
+[ 97%] Built target projectM_main
+[ 98%] Building CXX object src/libprojectM/CMakeFiles/projectM.dir/__/__/dummy.cpp.o
+[100%] Linking CXX static library libprojectM-4.a
+[100%] Built target projectM
+-- Install configuration: "Release"
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/projectM_export.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/version.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/audio.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/callbacks.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/core.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/debug.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/memory.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/parameters.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/projectM.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/render_opengl.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/touch.h
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/include/projectM-4/types.h
+-- Installing: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/libprojectM-4.a
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/cmake/projectM4/projectM4ConfigVersion.cmake
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/cmake/projectM4/projectM4Config.cmake
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/cmake/projectM4/FindOpenGL.cmake
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/cmake/projectM4/projectM4Targets.cmake
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/cmake/projectM4/projectM4Targets-release.cmake
+-- Up-to-date: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/pkgconfig/projectM-4.pc
+===== arm64-v8a: link libomniviz.so =====
+static libs: /home/hatch/workspace/omnitools-native/projectm/build-arm64-v8a/install/lib/libprojectM-4.a

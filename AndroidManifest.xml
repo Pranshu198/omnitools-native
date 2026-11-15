@@ -14,6 +14,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.compass" android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -49,6 +54,59 @@
             android:name="com.jackbhai.omnitools.nativ.games.GameActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Batch 3 Track A: native tools (launched from Menu via NativeTools) -->
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.RecorderActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.ScannerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.FlashlightActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.CompassActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.LevelActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.NoiseActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.QrActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.tools.FilesActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Batch 3 Track C: MilkDrop visualizations (projectM) -->
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.viz.VizActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:screenOrientation="sensor"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
+        <!-- Batch 3 Track A: share fallback for API 26-28 (ShareUtil) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.jackbhai.omnitools.native.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <activity
             android:name="com.jackbhai.omnitools.nativ.widget.WidgetConfigActivity"

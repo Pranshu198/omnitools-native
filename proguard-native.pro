@@ -51,3 +51,16 @@
 -dontwarn java.awt.**
 -dontwarn javax.imageio.**
 -dontwarn javax.swing.**
+# Batch 3 Track A — native tools (manifest-named activities) + ZXing
+# (no reflection on the decode path; kept defensively).
+-keep public class com.jackbhai.omnitools.nativ.tools.RecorderActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.ScannerActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.FlashlightActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.CompassActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.LevelActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.NoiseActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.QrActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.tools.FilesActivity { public <init>(); }
+-keep class com.google.zxing.** { *; }
+# Batch 3 Track C — visualizer: JNI binds by name; keep the package.
+-keep class com.jackbhai.omnitools.nativ.viz.** { *; }

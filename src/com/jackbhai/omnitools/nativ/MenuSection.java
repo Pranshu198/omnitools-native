@@ -180,6 +180,12 @@ public final class MenuSection {
             Registry.Tool t = (Registry.Tool) item;
             h.text.setText(t.name);
             h.itemView.setOnClickListener(v -> {
+                // Batch 3 Track A: native tools launch natively; the rest
+                // keep the bundled-page frame.
+                if (com.jackbhai.omnitools.nativ.tools.NativeTools.isNative(t.id)) {
+                    com.jackbhai.omnitools.nativ.tools.NativeTools.launch(act, t.id, t.name);
+                    return;
+                }
                 Intent it = new Intent(act, WebFrameActivity.class);
                 it.putExtra(WebFrameActivity.EXTRA_ROUTE, t.id);
                 it.putExtra(WebFrameActivity.EXTRA_TITLE, t.name);

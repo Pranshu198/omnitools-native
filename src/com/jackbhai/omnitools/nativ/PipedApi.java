@@ -36,6 +36,7 @@ public final class PipedApi {
     }
 
     public static final class Streams {
+        public String via = "";              // route that produced this (Track B)
         public String title = "";
         public String uploader = "";
         public String thumb = "";
@@ -106,6 +107,7 @@ public final class PipedApi {
             try {
                 JSONObject d = Net.getJsonObject(base + "/streams/" + videoId, 8000);
                 Streams s = new Streams();
+                s.via = "piped/" + base.replace("https://", "");
                 s.title = Net.clean(d.optString("title", ""));
                 s.uploader = Net.clean(d.optString("uploader", ""));
                 s.thumb = d.optString("thumbnailUrl", "");

@@ -434,6 +434,19 @@ public final class SongsSection {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         styleLp.leftMargin = (int) Glass.dp(c, 8);
         vizRow.addView(styleChip, styleLp);
+        // Batch 3 Track C: MilkDrop (projectM) fullscreen visualizations.
+        TextView milkChip = Glass.text(c, "MilkDrop", 12.5f, Glass.TEXT, false);
+        milkChip.setBackground(Glass.neonPill(c, Glass.NEON_VIOLET));
+        Glass.pad(milkChip, c, 12, 5, 12, 5);
+        milkChip.setOnClickListener(v -> {
+            Sfx.tap();
+            act.startActivity(new android.content.Intent(
+                    act, com.jackbhai.omnitools.nativ.viz.VizActivity.class));
+        });
+        LinearLayout.LayoutParams milkLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        milkLp.leftMargin = (int) Glass.dp(c, 8);
+        vizRow.addView(milkChip, milkLp);
         vizNote = Glass.text(c, "", 11.5f, Glass.TEXT_DIM, false);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
