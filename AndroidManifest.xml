@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
@@ -41,6 +44,88 @@
             android:name="com.jackbhai.omnitools.nativ.WebFrameActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.games.GameActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.widget.WidgetConfigActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.PlayerMiniWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Player (Mini)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.jackbhai.omnitools.nativ.NOW_PLAYING_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_player_mini_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.PlayerBigWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Player (Big)">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.jackbhai.omnitools.nativ.NOW_PLAYING_CHANGED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_player_big_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.VerseWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Verse of the Day">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_verse_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.QuickToolsWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Quick Tools">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quicktools_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.SongsSearchWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Songs Search">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_search_info" />
+        </receiver>
+
+        <receiver
+            android:name="com.jackbhai.omnitools.nativ.widget.DownloadsWidgetProvider"
+            android:exported="false"
+            android:label="OmniTools Downloads">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/widget_downloads_info" />
+        </receiver>
 
         <service
             android:name="com.jackbhai.omnitools.nativ.PlaybackService"

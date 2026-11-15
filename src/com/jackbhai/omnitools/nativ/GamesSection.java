@@ -12,6 +12,8 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.jackbhai.omnitools.nativ.games.NativeGames;
+
 /**
  * Games — Phase-1 bridge, labelled honestly as such in the UI.
  *
@@ -41,7 +43,9 @@ public final class GamesSection {
         col.addView(Glass.text(c, "Games", 24, Glass.TEXT, true));
         TextView sub = Glass.text(c, Registry.GAMES.length
                 + " mini games — reflex, puzzle, brain, arcade and cards. "
-                + "Games open in the built-in arcade.",
+                + NativeGames.nativeIds().length
+                + " favourites now run natively and fully offline; "
+                + "the rest open in the built-in arcade.",
                 12.5f, Glass.TEXT_DIM, false);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -90,6 +94,10 @@ public final class GamesSection {
             h.name.setText(g.name);
             h.group.setText(g.group);
             h.itemView.setOnClickListener(v -> {
+                if (NativeGames.isNative(g.id)) {
+                    NativeGames.launch(act, g.id, g.name);
+                    return;
+                }
                 Intent it = new Intent(act, WebFrameActivity.class);
                 it.putExtra(WebFrameActivity.EXTRA_ROUTE, "games");
                 it.putExtra(WebFrameActivity.EXTRA_TITLE, g.name);

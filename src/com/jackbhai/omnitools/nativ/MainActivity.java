@@ -1,6 +1,7 @@
 package com.jackbhai.omnitools.nativ;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -124,8 +125,35 @@ public class MainActivity extends Activity {
             Sfx.tab();
             showSection(idx);
         });
-        showSection(GlassNavView.TAB_SONGS);
-        nav.select(GlassNavView.TAB_SONGS, false);
+        int initial = tabForSection(getIntent() == null ? null
+                : getIntent().getStringExtra("open_section"));
+        showSection(initial);
+        nav.select(initial, false);
+    }
+
+    /** Widget deep links: a home-screen widget tap arrives with an
+     *  "open_section" extra (songs/tv/downloader/games/menu). With the
+     *  widgets' CLEAR_TOP flags a running instance may be reused, so the
+     *  routing lives in onNewIntent as well as onCreate. */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (nav == null) return; // refused copy: no UI to route
+        showSection(tabForSection(intent == null ? null
+                : intent.getStringExtra("open_section")));
+    }
+
+    private static int tabForSection(String s) {
+        if (s == null) return GlassNavView.TAB_SONGS;
+        switch (s) {
+            case "tv":         return GlassNavView.TAB_TV;
+            case "downloader": return GlassNavView.TAB_DOWNLOADER;
+            case "games":      return GlassNavView.TAB_GAMES;
+            case "menu":       return GlassNavView.TAB_MENU;
+            case "songs":
+            default:           return GlassNavView.TAB_SONGS;
+        }
     }
 
     /** SHA-256 (lowercase hex) of this app's signing certificate, or null

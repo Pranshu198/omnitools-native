@@ -15,7 +15,13 @@ import android.widget.TextView;
 public final class Glass {
 
     public static final int BG_DEEP = Color.rgb(7, 11, 20);
-    public static final int NEON_CYAN = Color.rgb(0, 229, 255);
+    /* Accent indirection (Phase 2): ACCENT is the mutable accent holder and
+     * NEON_CYAN is no longer final — AccentTheme rewrites both together
+     * (album-art dynamic colour or a manual choice), defaulting to the
+     * Phase-1 neon cyan below. Every existing reader of NEON_CYAN (nav
+     * wave, pills, player) picks the new accent up on its next read. */
+    public static int ACCENT = Color.rgb(0, 229, 255);
+    public static int NEON_CYAN = Color.rgb(0, 229, 255);
     public static final int NEON_VIOLET = Color.rgb(179, 136, 255);
     public static final int TEXT = Color.rgb(235, 242, 250);
     public static final int TEXT_DIM = Color.rgb(160, 175, 195);

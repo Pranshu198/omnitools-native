@@ -1,12 +1,16 @@
 package com.jackbhai.omnitools.nativ;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
@@ -16,8 +20,11 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -52,6 +59,14 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import com.jackbhai.omnitools.nativ.audio.AccentTheme;
+import com.jackbhai.omnitools.nativ.audio.EqController;
+import com.jackbhai.omnitools.nativ.audio.EqPresets;
+import com.jackbhai.omnitools.nativ.audio.Library;
+import com.jackbhai.omnitools.nativ.audio.Lrc;
+import com.jackbhai.omnitools.nativ.audio.LrclibClient;
+import com.jackbhai.omnitools.nativ.audio.TagView;
 
 import eightbitlab.com.blurview.BlurView;
 import linc.com.amplituda.Amplituda;
@@ -118,9 +133,57 @@ public final class SongsSection {
     private boolean vizOn = false;
     private TextView vizNote;
 
+    // ---- Phase 2: library / EQ / lyrics / accent (Track C) ----
+    private static final int SRC_STREAM = 0, SRC_LIBRARY = 1, SRC_FAVS = 2;
+    private int sourceMode = SRC_STREAM;
+    private TextView[] sourceChips;
+    private TextView rescanChip;
+    private LinearLayout groupBar;
+    private LinearLayout groupNamesRow;
+    private int groupMode = 0;              // 0 Songs, 1 Albums, 2 Artists, 3 Folders
+    private String groupFilter = null;
+    private List<Library.LocalTrack> library = null;
+    private List<Song> libraryVisibleCache = null;
+    private boolean scanning = false;
+
+    private EqController eq;
+    private AccentTheme accentTheme;
+    private SharedPreferences audioPrefs;
+    private LinearLayout audioPanel;
+    private LinearLayout bandBox;
+    private TextView engineLabel;
+    private TextView presetLabel;
+    private LinearLayout presetRow;
+    private int eqUiSession = -1;
+    private int eqUiBands = -1;
+
+    private float crossfadeSec = 0f;
+    private boolean skipSilence = false;
+    private boolean skipSilenceApplied = false;
+    private boolean fadingIn = false;
+    private float lastVolume = 1f;
+    private long sleepDeadlineMs = 0;
+    private boolean sleepAtTrackEnd = false;
+    private TextView sleepLabel;
+
+    private TextView masterChip, proChip, dynChip, xfLabel, skipChip;
+
+    private LinearLayout lyricsPanel;
+    private TextView lyricsState;
+    private TextView lyricsBody;
+    private ScrollView lyricsScroll;
+    private Lrc.Doc lyricsDoc = null;
+    private int lyricsGen = 0;
+    private int lastLyricIdx = -2;
+
     public SongsSection(Activity act) {
         this.act = act;
         prefs = act.getSharedPreferences("omnitools_native", Context.MODE_PRIVATE);
+        audioPrefs = act.getSharedPreferences(EqController.PREFS, Context.MODE_PRIVATE);
+        eq = new EqController(act);
+        accentTheme = new AccentTheme(act);
+        crossfadeSec = audioPrefs.getFloat("crossfade_sec", 0f);
+        skipSilence = audioPrefs.getBoolean("skip_silence", false);
         loadFavourites();
         build();
         connectController();
@@ -147,11 +210,7 @@ public final class SongsSection {
         Glass.pad(favChip, c, 12, 6, 12, 6);
         favChip.setOnClickListener(v -> {
             Sfx.tap();
-            showingFavs = !showingFavs;
-            refreshList();
-            status.setText(showingFavs
-                    ? favourites.size() + " saved songs"
-                    : (rows.isEmpty() ? "Search any song, artist or film" : status.getText()));
+            setSource(sourceMode == SRC_FAVS ? SRC_STREAM : SRC_FAVS);
         });
         head.addView(favChip);
         col.addView(head);
@@ -192,6 +251,78 @@ public final class SongsSection {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         stLp.topMargin = (int) Glass.dp(c, 8);
         col.addView(status, stLp);
+
+        // Source switch: Streaming / Library / Favourites.
+        LinearLayout srcRow = new LinearLayout(c);
+        srcRow.setOrientation(LinearLayout.HORIZONTAL);
+        srcRow.setGravity(Gravity.CENTER_VERTICAL);
+        String[] srcNames = {"Streaming", "Library", "Favourites"};
+        sourceChips = new TextView[srcNames.length];
+        for (int i = 0; i < srcNames.length; i++) {
+            final int mode = i;
+            TextView chip = Glass.text(c, srcNames[i], 12.5f, Glass.TEXT, false);
+            Glass.pad(chip, c, 12, 5, 12, 5);
+            chip.setOnClickListener(v -> { Sfx.tap(); setSource(mode); });
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) clp.leftMargin = (int) Glass.dp(c, 8);
+            srcRow.addView(chip, clp);
+            sourceChips[i] = chip;
+        }
+        rescanChip = Glass.text(c, "Rescan", 12.5f, Glass.TEXT, false);
+        rescanChip.setBackground(Glass.neonPill(c, Glass.NEON_VIOLET));
+        Glass.pad(rescanChip, c, 12, 5, 12, 5);
+        rescanChip.setVisibility(View.GONE);
+        rescanChip.setOnClickListener(v -> { Sfx.tap(); Library.invalidate(); scanLibrary(); });
+        LinearLayout.LayoutParams rlp2 = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp2.leftMargin = (int) Glass.dp(c, 8);
+        srcRow.addView(rescanChip, rlp2);
+        LinearLayout.LayoutParams srcLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        srcLp.topMargin = (int) Glass.dp(c, 8);
+        col.addView(srcRow, srcLp);
+        styleSourceChips();
+
+        // Library grouping bar (Albums / Artists / Folders), library mode only.
+        groupBar = new LinearLayout(c);
+        groupBar.setOrientation(LinearLayout.VERTICAL);
+        groupBar.setVisibility(View.GONE);
+        LinearLayout modeRow = new LinearLayout(c);
+        modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] groupNames = {"Songs", "Albums", "Artists", "Folders"};
+        for (int i = 0; i < groupNames.length; i++) {
+            final int gm = i;
+            TextView chip = Glass.text(c, groupNames[i], 12f, Glass.TEXT, false);
+            chip.setBackground(Glass.neonPill(c, Glass.NEON_CYAN));
+            Glass.pad(chip, c, 10, 4, 10, 4);
+            chip.setOnClickListener(v -> {
+                Sfx.tap();
+                groupMode = gm;
+                groupFilter = null;
+                libraryVisibleCache = null;
+                rebuildGroupNames();
+                refreshList();
+            });
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (i > 0) clp.leftMargin = (int) Glass.dp(c, 6);
+            modeRow.addView(chip, clp);
+        }
+        groupBar.addView(modeRow);
+        groupNamesRow = new LinearLayout(c);
+        groupNamesRow.setOrientation(LinearLayout.HORIZONTAL);
+        HorizontalScrollView gScroll = new HorizontalScrollView(c);
+        gScroll.setHorizontalScrollBarEnabled(false);
+        gScroll.addView(groupNamesRow);
+        LinearLayout.LayoutParams gLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gLp.topMargin = (int) Glass.dp(c, 6);
+        groupBar.addView(gScroll, gLp);
+        LinearLayout.LayoutParams gbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gbLp.topMargin = (int) Glass.dp(c, 6);
+        col.addView(groupBar, gbLp);
 
         RecyclerView list = new RecyclerView(c);
         list.setLayoutManager(new LinearLayoutManager(c));
@@ -329,6 +460,47 @@ public final class SongsSection {
         panelLp.topMargin = (int) Glass.dp(c, 6);
         bar.addView(vizPanel, panelLp);
 
+        // Audio (EQ / effects / playback / accent) + Lyrics toggles.
+        LinearLayout audioRow = new LinearLayout(c);
+        audioRow.setOrientation(LinearLayout.HORIZONTAL);
+        audioRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView audioChip = Glass.text(c, "Audio", 12.5f, Glass.TEXT, false);
+        audioChip.setBackground(Glass.neonPill(c, Glass.NEON_CYAN));
+        Glass.pad(audioChip, c, 12, 5, 12, 5);
+        audioChip.setOnClickListener(v -> {
+            Sfx.tap();
+            audioPanel.setVisibility(audioPanel.getVisibility() == View.VISIBLE
+                    ? View.GONE : View.VISIBLE);
+            if (audioPanel.getVisibility() == View.VISIBLE) refreshEqUi();
+        });
+        audioRow.addView(audioChip);
+        TextView lyricsChip = Glass.text(c, "Lyrics", 12.5f, Glass.TEXT, false);
+        lyricsChip.setBackground(Glass.neonPill(c, Glass.NEON_VIOLET));
+        Glass.pad(lyricsChip, c, 12, 5, 12, 5);
+        lyricsChip.setOnClickListener(v -> {
+            Sfx.tap();
+            lyricsPanel.setVisibility(lyricsPanel.getVisibility() == View.VISIBLE
+                    ? View.GONE : View.VISIBLE);
+        });
+        LinearLayout.LayoutParams lyrLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lyrLp.leftMargin = (int) Glass.dp(c, 8);
+        audioRow.addView(lyricsChip, lyrLp);
+        sleepLabel = Glass.text(c, "", 11.5f, Glass.TEXT_DIM, false);
+        LinearLayout.LayoutParams slLp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        slLp.leftMargin = (int) Glass.dp(c, 10);
+        audioRow.addView(sleepLabel, slLp);
+        LinearLayout.LayoutParams audioRowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        audioRowLp.topMargin = (int) Glass.dp(c, 6);
+        bar.addView(audioRow, audioRowLp);
+
+        audioPanel = buildAudioPanel(c);
+        bar.addView(audioPanel);
+        lyricsPanel = buildLyricsPanel(c);
+        bar.addView(lyricsPanel);
+
         // The bar is real glass when the shell's BlurTarget is available.
         LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -431,7 +603,7 @@ public final class SongsSection {
         Sfx.tap();
         final String q = queryBox.getText().toString().trim();
         if (q.isEmpty()) return;
-        showingFavs = false;
+        if (sourceMode != SRC_STREAM) setSource(SRC_STREAM);
         final int gen = ++searchGen;
         status.setText("Searching…");
         final List<Song> merged = new ArrayList<>();
@@ -543,7 +715,11 @@ public final class SongsSection {
     }
 
     private void refreshList() { adapter.notifyDataSetChanged(); }
-    private List<Song> visible() { return showingFavs ? favourites : rows; }
+    private List<Song> visible() {
+        if (sourceMode == SRC_FAVS) return favourites;
+        if (sourceMode == SRC_LIBRARY) return librarySongs();
+        return rows;
+    }
 
     /* ------------------------------------------------------------ playback */
 
@@ -563,6 +739,13 @@ public final class SongsSection {
                         }
                     }
                     @Override public void onMediaItemTransition(@Nullable MediaItem item, int reason) {
+                        if (sleepAtTrackEnd
+                                && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                            sleepAtTrackEnd = false;
+                            if (sleepLabel != null) sleepLabel.setText("");
+                            controller.pause();
+                        }
+                        fadingIn = crossfadeSec > 0;
                         updateNowPlaying();
                     }
                 });
@@ -582,6 +765,7 @@ public final class SongsSection {
                 if (wave != null) {
                     wave.setProgress(dur > 0 ? 100f * pos / dur : 0f);
                 }
+                audioTick(pos, dur);
             }
             ui.postDelayed(this, 500);
         }
@@ -607,6 +791,7 @@ public final class SongsSection {
             if (currentSong == null || !sameTrack(currentSong, s)) {
                 currentSong = s;
                 ensureWaveform(s);
+                onTrackChangedForAudio(s);
             }
         }
     }
@@ -680,6 +865,9 @@ public final class SongsSection {
             return;
         }
         if (wave != null) wave.setSample(placeholderSample());
+        // Local library tracks: no stream download for a waveform — the
+        // placeholder shape stays and the seekbar remains fully usable.
+        if (s.stream == null || !s.stream.startsWith("http")) return;
         final File audioFile = new File(waveDir(), key + ".audio");
         net.execute(() -> {
             try {
@@ -823,8 +1011,710 @@ public final class SongsSection {
             h.fav.setBackground(Glass.neonPill(act, fav ? Glass.NEON_VIOLET : Glass.NEON_CYAN));
             h.fav.setOnClickListener(v -> toggleFav(s));
             h.itemView.setOnClickListener(v -> playFrom(new ArrayList<>(visible()), idx));
+            if (sourceMode == SRC_LIBRARY) {
+                h.itemView.setOnLongClickListener(v -> { showTagSheet(s); return true; });
+            } else {
+                h.itemView.setOnLongClickListener(null);
+            }
         }
 
         @Override public int getItemCount() { return visible().size(); }
+    }
+
+    /* ============================================================
+     * Phase 2 (Track C): local library, EQ + effects, playback
+     * settings, lyrics, tags, dynamic accent.
+     * ============================================================ */
+
+    private TextView mkChip(Context c, String label, int neon) {
+        TextView chip = Glass.text(c, label, 12f, Glass.TEXT, false);
+        chip.setBackground(Glass.neonPill(c, neon));
+        Glass.pad(chip, c, 10, 4, 10, 4);
+        return chip;
+    }
+
+    private LinearLayout.LayoutParams chipLp(Context c, boolean first) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        if (!first) lp.leftMargin = (int) Glass.dp(c, 6);
+        return lp;
+    }
+
+    /* ------------------------------------------------------------ sources + library */
+
+    private void setSource(int mode) {
+        sourceMode = mode;
+        showingFavs = mode == SRC_FAVS;
+        styleSourceChips();
+        boolean lib = mode == SRC_LIBRARY;
+        groupBar.setVisibility(lib ? View.VISIBLE : View.GONE);
+        rescanChip.setVisibility(lib ? View.VISIBLE : View.GONE);
+        if (mode == SRC_FAVS) {
+            status.setText(favourites.size() + " saved songs");
+        } else if (lib) {
+            ensureLibrary();
+        } else {
+            status.setText(rows.isEmpty()
+                    ? "Search any song, artist or film" : rows.size() + " songs");
+        }
+        refreshList();
+    }
+
+    private void styleSourceChips() {
+        if (sourceChips == null) return;
+        for (int i = 0; i < sourceChips.length; i++) {
+            sourceChips[i].setBackground(Glass.neonPill(act,
+                    i == sourceMode ? Glass.ACCENT : Glass.NEON_VIOLET));
+        }
+        if (favChip != null) {
+            favChip.setBackground(Glass.neonPill(act,
+                    sourceMode == SRC_FAVS ? Glass.ACCENT : Glass.NEON_VIOLET));
+        }
+    }
+
+    private boolean libraryGranted() {
+        return act.checkSelfPermission(Library.permission())
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void ensureLibrary() {
+        if (libraryGranted()) {
+            if (library == null && Library.cached() != null) {
+                library = Library.cached();
+                libraryVisibleCache = null;
+                rebuildGroupNames();
+                refreshList();
+                status.setText(library.size() + " local songs");
+            } else if (library == null) {
+                scanLibrary();
+            } else {
+                status.setText(library.size() + " local songs");
+            }
+            return;
+        }
+        status.setText("Storage permission is needed to list the songs on this device.");
+        act.requestPermissions(new String[]{Library.permission()}, 77);
+        watchLibraryPermission(0);
+    }
+
+    private void watchLibraryPermission(int tries) {
+        if (sourceMode != SRC_LIBRARY) return;
+        if (libraryGranted()) { scanLibrary(); return; }
+        if (tries < 10) ui.postDelayed(() -> watchLibraryPermission(tries + 1), 900);
+    }
+
+    private void scanLibrary() {
+        if (scanning) return;
+        if (!libraryGranted()) { ensureLibrary(); return; }
+        scanning = true;
+        status.setText("Scanning device library…");
+        net.execute(() -> {
+            final List<Library.LocalTrack> all = Library.scan(act);
+            ui.post(() -> {
+                scanning = false;
+                library = all;
+                libraryVisibleCache = null;
+                rebuildGroupNames();
+                refreshList();
+                if (sourceMode == SRC_LIBRARY) {
+                    status.setText(all.size() + " local songs");
+                }
+            });
+        });
+    }
+
+    private List<Song> librarySongs() {
+        if (libraryVisibleCache != null) return libraryVisibleCache;
+        List<Song> out = new ArrayList<>();
+        if (library != null) {
+            List<Library.LocalTrack> src = library;
+            if (groupMode > 0) {
+                java.util.Map<String, List<Library.LocalTrack>> groups =
+                        groupMode == 1 ? Library.byAlbum(library)
+                                : groupMode == 2 ? Library.byArtist(library)
+                                : Library.byFolder(library);
+                if (groupFilter != null) {
+                    List<Library.LocalTrack> g = groups.get(groupFilter);
+                    src = g != null ? g : new ArrayList<>();
+                }
+            }
+            for (Library.LocalTrack t : src) out.add(t.toSong());
+        }
+        libraryVisibleCache = out;
+        return out;
+    }
+
+    private void rebuildGroupNames() {
+        if (groupNamesRow == null) return;
+        groupNamesRow.removeAllViews();
+        if (library == null || groupMode == 0) return;
+        final java.util.Map<String, List<Library.LocalTrack>> groups =
+                groupMode == 1 ? Library.byAlbum(library)
+                        : groupMode == 2 ? Library.byArtist(library)
+                        : Library.byFolder(library);
+        TextView all = mkChip(act, "All", Glass.NEON_VIOLET);
+        all.setOnClickListener(v -> {
+            groupFilter = null;
+            libraryVisibleCache = null;
+            refreshList();
+        });
+        groupNamesRow.addView(all, chipLp(act, true));
+        for (final String name : groups.keySet()) {
+            TextView chip = mkChip(act, name + " (" + groups.get(name).size() + ")",
+                    Glass.NEON_CYAN);
+            chip.setOnClickListener(v -> {
+                groupFilter = name;
+                libraryVisibleCache = null;
+                refreshList();
+            });
+            groupNamesRow.addView(chip, chipLp(act, false));
+        }
+    }
+
+    private void showTagSheet(final Song s) {
+        Library.LocalTrack found = null;
+        if (library != null && s.id.startsWith("local:")) {
+            long id = -1;
+            try { id = Long.parseLong(s.id.substring(6)); } catch (Exception ignored) {}
+            for (Library.LocalTrack t : library) if (t.id == id) { found = t; break; }
+        }
+        if (found == null) {
+            status.setText("Tags are available for local library files.");
+            return;
+        }
+        final Library.LocalTrack track = found;
+        status.setText("Reading tags…");
+        net.execute(() -> {
+            final TagView.TagInfo info = TagView.read(new File(track.path));
+            ui.post(() -> new AlertDialog.Builder(act)
+                    .setTitle("Tags — " + track.title)
+                    .setMessage((info.ok ? info.describe() : "No readable tags in this file.")
+                            + "\n\nTag editing is view-only: these files belong to the "
+                            + "device media library, and OmniTools will not risk "
+                            + "rewriting your only copy.")
+                    .setPositiveButton("Close", null)
+                    .show());
+        });
+    }
+
+    /* ------------------------------------------------------------ audio panel */
+
+    private LinearLayout buildAudioPanel(Context c) {
+        LinearLayout panel = new LinearLayout(c);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setVisibility(View.GONE);
+        Glass.pad(panel, c, 2, 8, 2, 2);
+
+        LinearLayout masterRow = new LinearLayout(c);
+        masterRow.setOrientation(LinearLayout.HORIZONTAL);
+        masterRow.setGravity(Gravity.CENTER_VERTICAL);
+        masterChip = mkChip(c, "EQ: On", Glass.NEON_CYAN);
+        masterChip.setOnClickListener(v -> { eq.setMasterOn(!eq.isMasterOn()); refreshEqUi(); });
+        masterRow.addView(masterChip);
+        proChip = mkChip(c, "Pro EQ: Off", Glass.NEON_VIOLET);
+        proChip.setOnClickListener(v -> {
+            if (!eq.isProAvailable()) {
+                engineLabel.setText("Pro EQ needs Android 9 (API 28) or newer — "
+                        + "the standard Equalizer is live.");
+                return;
+            }
+            eq.setProRequested(!eq.isProRequested());
+            refreshEqUi();
+        });
+        masterRow.addView(proChip, chipLp(c, false));
+        panel.addView(masterRow);
+
+        engineLabel = Glass.text(c, "", 11.5f, Glass.TEXT_DIM, false);
+        LinearLayout.LayoutParams elLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        elLp.topMargin = (int) Glass.dp(c, 4);
+        panel.addView(engineLabel, elLp);
+
+        presetLabel = Glass.text(c, "Preset: Flat", 12.5f, Glass.TEXT, true);
+        LinearLayout.LayoutParams plLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plLp.topMargin = (int) Glass.dp(c, 8);
+        panel.addView(presetLabel, plLp);
+
+        presetRow = new LinearLayout(c);
+        presetRow.setOrientation(LinearLayout.HORIZONTAL);
+        HorizontalScrollView pScroll = new HorizontalScrollView(c);
+        pScroll.setHorizontalScrollBarEnabled(false);
+        pScroll.addView(presetRow);
+        panel.addView(pScroll);
+
+        bandBox = new LinearLayout(c);
+        bandBox.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams bbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        bbLp.topMargin = (int) Glass.dp(c, 6);
+        panel.addView(bandBox, bbLp);
+
+        panel.addView(effectSlider(c, "Bass boost", eq.bassStrength(), v -> {
+            eq.setBassStrength(v * 10);
+        }));
+        panel.addView(effectSlider(c, "Virtualizer", eq.virtStrength(), v -> {
+            eq.setVirtStrength(v * 10);
+        }));
+
+        TextView revLabel = Glass.text(c, "Reverb", 12.5f, Glass.TEXT, true);
+        panel.addView(revLabel, plLp);
+        LinearLayout revRow = new LinearLayout(c);
+        revRow.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < EqController.REVERB_NAMES.length; i++) {
+            final int idx = i;
+            TextView chip = mkChip(c, EqController.REVERB_NAMES[i], Glass.NEON_CYAN);
+            chip.setOnClickListener(v -> eq.setReverbIndex(idx));
+            revRow.addView(chip, chipLp(c, i == 0));
+        }
+        HorizontalScrollView rScroll = new HorizontalScrollView(c);
+        rScroll.setHorizontalScrollBarEnabled(false);
+        rScroll.addView(revRow);
+        panel.addView(rScroll);
+
+        xfLabel = Glass.text(c, crossfadeLabel(), 12.5f, Glass.TEXT, true);
+        panel.addView(xfLabel, plLp);
+        SeekBar xfBar = new SeekBar(c);
+        xfBar.setMax(24);
+        xfBar.setProgress(Math.round(crossfadeSec * 2));
+        xfBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
+                if (!user) return;
+                crossfadeSec = p / 2f;
+                audioPrefs.edit().putFloat("crossfade_sec", crossfadeSec).apply();
+                xfLabel.setText(crossfadeLabel());
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        panel.addView(xfBar);
+
+        skipChip = mkChip(c, "Skip silence: Off", Glass.NEON_VIOLET);
+        skipChip.setOnClickListener(v -> {
+            skipSilence = !skipSilence;
+            audioPrefs.edit().putBoolean("skip_silence", skipSilence).apply();
+            skipSilenceApplied = false;
+            applySkipSilence();
+            refreshEqUi();
+        });
+        LinearLayout.LayoutParams skLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        skLp.topMargin = (int) Glass.dp(c, 6);
+        panel.addView(skipChip, skLp);
+
+        TextView sleepTitle = Glass.text(c, "Sleep timer", 12.5f, Glass.TEXT, true);
+        panel.addView(sleepTitle, plLp);
+        LinearLayout sleepRow = new LinearLayout(c);
+        sleepRow.setOrientation(LinearLayout.HORIZONTAL);
+        String[] sleepNames = {"Off", "10", "20", "30", "45", "60", "End of track"};
+        for (int i = 0; i < sleepNames.length; i++) {
+            final String name = sleepNames[i];
+            TextView chip = mkChip(c, name, Glass.NEON_CYAN);
+            chip.setOnClickListener(v -> setSleep(name));
+            sleepRow.addView(chip, chipLp(c, i == 0));
+        }
+        HorizontalScrollView sScroll = new HorizontalScrollView(c);
+        sScroll.setHorizontalScrollBarEnabled(false);
+        sScroll.addView(sleepRow);
+        panel.addView(sScroll);
+
+        TextView accTitle = Glass.text(c, "Accent colour", 12.5f, Glass.TEXT, true);
+        panel.addView(accTitle, plLp);
+        dynChip = mkChip(c, "Dynamic accent: On", Glass.NEON_CYAN);
+        dynChip.setOnClickListener(v -> {
+            accentTheme.setDynamicOn(!accentTheme.isDynamicOn());
+            refreshEqUi();
+        });
+        panel.addView(dynChip, skLp);
+        LinearLayout accRow = new LinearLayout(c);
+        accRow.setOrientation(LinearLayout.HORIZONTAL);
+        for (final AccentTheme.Choice choice : AccentTheme.MANUAL) {
+            TextView chip = mkChip(c, choice.name, choice.color);
+            chip.setOnClickListener(v -> {
+                accentTheme.setManualColor(choice.color);
+                status.setText("Accent: " + choice.name
+                        + " (manual — turn Dynamic on for album-art colours)");
+            });
+            accRow.addView(chip, chipLp(c, accRow.getChildCount() == 0));
+        }
+        HorizontalScrollView aScroll = new HorizontalScrollView(c);
+        aScroll.setHorizontalScrollBarEnabled(false);
+        aScroll.addView(accRow);
+        panel.addView(aScroll);
+
+        rebuildPresetRow();
+        refreshEqUi();
+        return panel;
+    }
+
+    private interface IntSink { void put(int v); }
+
+    private View effectSlider(Context c, String label, int initial0to1000, IntSink sink) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = Glass.text(c, label, 12f, Glass.TEXT_DIM, false);
+        row.addView(name, new LinearLayout.LayoutParams(
+                (int) Glass.dp(c, 92), ViewGroup.LayoutParams.WRAP_CONTENT));
+        SeekBar bar = new SeekBar(c);
+        bar.setMax(100);
+        bar.setProgress(Math.max(0, Math.min(100, initial0to1000 / 10)));
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
+                if (user) sink.put(p);
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        row.addView(bar, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return row;
+    }
+
+    private String crossfadeLabel() {
+        return crossfadeSec <= 0
+                ? "Crossfade: Off (fade between tracks)"
+                : "Crossfade: " + (crossfadeSec % 1 == 0
+                        ? String.valueOf((int) crossfadeSec) : String.valueOf(crossfadeSec))
+                        + " s (volume fade at track joins — not a two-deck mix)";
+    }
+
+    private void setSleep(String name) {
+        sleepAtTrackEnd = false;
+        sleepDeadlineMs = 0;
+        if (name.equals("Off")) {
+            sleepLabel.setText("");
+            return;
+        }
+        if (name.equals("End of track")) {
+            sleepAtTrackEnd = true;
+            sleepLabel.setText("Sleep at end of track");
+            return;
+        }
+        try {
+            int mins = Integer.parseInt(name);
+            sleepDeadlineMs = System.currentTimeMillis() + mins * 60000L;
+            sleepLabel.setText("Sleep in " + fmt(mins * 60000L));
+        } catch (Exception ignored) {}
+    }
+
+    private void rebuildPresetRow() {
+        if (presetRow == null) return;
+        presetRow.removeAllViews();
+        boolean first = true;
+        for (final String name : EqPresets.NAMES) {
+            TextView chip = mkChip(act, name, Glass.NEON_CYAN);
+            chip.setOnClickListener(v -> {
+                eq.applyPreset(name);
+                refreshEqUi();
+                rebuildBandSliders();
+            });
+            presetRow.addView(chip, chipLp(act, first));
+            first = false;
+        }
+        for (final String name : eq.userPresets().keySet()) {
+            TextView chip = mkChip(act, name, Glass.ACCENT);
+            chip.setOnClickListener(v -> {
+                eq.applyUserPreset(name);
+                refreshEqUi();
+                rebuildBandSliders();
+            });
+            presetRow.addView(chip, chipLp(act, false));
+        }
+        TextView save = mkChip(act, "Save preset", Glass.NEON_VIOLET);
+        save.setOnClickListener(v -> {
+            final EditText input = new EditText(act);
+            input.setHint("Preset name");
+            input.setTextColor(Glass.TEXT);
+            new AlertDialog.Builder(act)
+                    .setTitle("Save EQ preset")
+                    .setView(input)
+                    .setPositiveButton("Save", (d, w) -> {
+                        String n = input.getText().toString().trim();
+                        if (!n.isEmpty()) {
+                            eq.saveUserPreset(n);
+                            rebuildPresetRow();
+                            status.setText("Preset saved: " + n);
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+        presetRow.addView(save, chipLp(act, false));
+    }
+
+    private void rebuildBandSliders() {
+        if (bandBox == null) return;
+        bandBox.removeAllViews();
+        eqUiSession = eq.sessionId();
+        eqUiBands = eq.bandCount();
+        if (eq.sessionId() <= 0) {
+            bandBox.addView(Glass.text(act,
+                    "Play a song to attach the equalizer to its audio session.",
+                    11.5f, Glass.TEXT_DIM, false));
+            return;
+        }
+        for (int b = 0; b < eq.bandCount(); b++) {
+            final int band = b;
+            LinearLayout row = new LinearLayout(act);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            int hz = eq.centerFreqHz(band);
+            String freq = hz >= 1000
+                    ? String.format(Locale.US, "%.1fk", hz / 1000.0) : hz + "";
+            TextView fl = Glass.text(act, freq + " Hz", 11f, Glass.TEXT_DIM, false);
+            row.addView(fl, new LinearLayout.LayoutParams(
+                    (int) Glass.dp(act, 62), ViewGroup.LayoutParams.WRAP_CONTENT));
+            SeekBar bar = new SeekBar(act);
+            bar.setMax(300);
+            bar.setProgress(Math.round((eq.gainDb(band) + 15f) * 10f));
+            final TextView val = Glass.text(act, "", 11f, Glass.TEXT_DIM, false);
+            val.setText(String.format(Locale.US, "%+.1f dB", eq.gainDb(band)));
+            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(SeekBar sb, int p, boolean user) {
+                    float db = p / 10f - 15f;
+                    val.setText(String.format(Locale.US, "%+.1f dB", db));
+                    if (user) {
+                        eq.setGainDb(band, db);
+                        presetLabel.setText("Preset: Custom");
+                    }
+                }
+                @Override public void onStartTrackingTouch(SeekBar sb) {}
+                @Override public void onStopTrackingTouch(SeekBar sb) {}
+            });
+            row.addView(bar, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            row.addView(val, new LinearLayout.LayoutParams(
+                    (int) Glass.dp(act, 58), ViewGroup.LayoutParams.WRAP_CONTENT));
+            bandBox.addView(row);
+        }
+    }
+
+    private void refreshEqUi() {
+        if (masterChip != null) masterChip.setText(eq.isMasterOn() ? "EQ: On" : "EQ: Off");
+        if (proChip != null) {
+            proChip.setText("Pro EQ: " + (eq.isProRequested() ? "On" : "Off"));
+        }
+        if (engineLabel != null) {
+            engineLabel.setText("Engine: " + eq.liveEngine()
+                    + (eq.sessionId() <= 0 ? " (attaches when playback starts)" : ""));
+        }
+        if (presetLabel != null) presetLabel.setText("Preset: " + eq.presetName());
+        if (skipChip != null) {
+            skipChip.setText("Skip silence: " + (skipSilence ? "On" : "Off"));
+        }
+        if (dynChip != null) {
+            dynChip.setText("Dynamic accent: " + (accentTheme.isDynamicOn() ? "On" : "Off"));
+        }
+        if (eqUiSession != eq.sessionId() || eqUiBands != eq.bandCount()) {
+            rebuildBandSliders();
+        }
+    }
+
+    /* ------------------------------------------------------------ per-tick audio work */
+
+    private void audioTick(long pos, long dur) {
+        androidx.media3.exoplayer.ExoPlayer p = PlaybackService.sharedPlayer();
+        if (p != null) {
+            int sid = 0;
+            try { sid = p.getAudioSessionId(); } catch (Exception ignored) {}
+            if (sid > 0 && sid != eq.sessionId()) {
+                eq.attach(sid);
+                skipSilenceApplied = false;
+                if (audioPanel != null && audioPanel.getVisibility() == View.VISIBLE) {
+                    refreshEqUi();
+                }
+            }
+            if (!skipSilenceApplied) applySkipSilence();
+        }
+        // Crossfade: volume fade-out at the track end + fade-in at the
+        // start (single player, so this is a fade, not a two-deck mix).
+        if (controller != null) {
+            if (crossfadeSec > 0 && dur > 0) {
+                long fadeMs = (long) (crossfadeSec * 1000);
+                float v = 1f;
+                long rem = dur - pos;
+                if (rem < fadeMs) v = Math.max(0.05f, rem / (float) fadeMs);
+                if (fadingIn) {
+                    float vi = pos / (float) fadeMs;
+                    v = Math.min(v, Math.max(0.05f, vi));
+                    if (pos >= fadeMs) fadingIn = false;
+                }
+                setPlayerVolume(v);
+            } else if (lastVolume != 1f) {
+                setPlayerVolume(1f);
+            }
+        }
+        if (sleepDeadlineMs > 0 && controller != null) {
+            long rem = sleepDeadlineMs - System.currentTimeMillis();
+            if (rem <= 0) {
+                sleepDeadlineMs = 0;
+                sleepLabel.setText("");
+                controller.pause();
+                status.setText("Sleep timer ended — playback paused");
+            } else {
+                sleepLabel.setText("Sleep in " + fmt(rem));
+            }
+        }
+        updateLyricHighlight(pos);
+    }
+
+    private void setPlayerVolume(float v) {
+        if (controller == null || Math.abs(v - lastVolume) < 0.01f) return;
+        try {
+            controller.setVolume(v);
+            lastVolume = v;
+        } catch (Exception ignored) {}
+    }
+
+    private void applySkipSilence() {
+        androidx.media3.exoplayer.ExoPlayer p = PlaybackService.sharedPlayer();
+        if (p == null) return;
+        try {
+            p.setSkipSilenceEnabled(skipSilence);
+            skipSilenceApplied = true;
+        } catch (Exception ignored) {}
+    }
+
+    /* ------------------------------------------------------------ track change: lyrics + accent */
+
+    private void onTrackChangedForAudio(final Song s) {
+        loadLyricsFor(s);
+        if (s.art != null && !s.art.isEmpty()) {
+            final String artRef = s.art;
+            net.execute(() -> {
+                Bitmap bmp = loadArtBitmap(artRef);
+                if (bmp != null) ui.post(() -> accentTheme.onArtwork(bmp));
+            });
+        }
+    }
+
+    private Bitmap loadArtBitmap(String ref) {
+        try {
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inSampleSize = 2;
+            if (ref.startsWith("content://")) {
+                try (InputStream in = act.getContentResolver()
+                        .openInputStream(Uri.parse(ref))) {
+                    return BitmapFactory.decodeStream(in, null, o);
+                }
+            }
+            if (ref.startsWith("http")) {
+                HttpURLConnection cn = (HttpURLConnection) new URL(ref).openConnection();
+                cn.setConnectTimeout(8000);
+                cn.setReadTimeout(8000);
+                cn.setRequestProperty("User-Agent", Net.UA);
+                try (InputStream in = cn.getInputStream()) {
+                    return BitmapFactory.decodeStream(in, null, o);
+                } finally {
+                    cn.disconnect();
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /* ------------------------------------------------------------ lyrics */
+
+    private LinearLayout buildLyricsPanel(Context c) {
+        LinearLayout panel = new LinearLayout(c);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setVisibility(View.GONE);
+        Glass.pad(panel, c, 2, 8, 2, 2);
+        lyricsState = Glass.text(c, "Play a song to fetch its lyrics.",
+                11.5f, Glass.TEXT_DIM, false);
+        panel.addView(lyricsState);
+        lyricsBody = Glass.text(c, "", 13.5f, Glass.TEXT, false);
+        lyricsBody.setLineSpacing(Glass.dp(c, 4), 1f);
+        lyricsScroll = new ScrollView(c);
+        lyricsScroll.addView(lyricsBody);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, (int) Glass.dp(c, 168));
+        lp.topMargin = (int) Glass.dp(c, 4);
+        panel.addView(lyricsScroll, lp);
+        return panel;
+    }
+
+    private void loadLyricsFor(final Song s) {
+        final int gen = ++lyricsGen;
+        lyricsDoc = null;
+        lastLyricIdx = -2;
+        if (lyricsState != null) lyricsState.setText("Loading lyrics…");
+        if (lyricsBody != null) lyricsBody.setText("");
+        final File dir = new File(act.getCacheDir(), "lyrics");
+        final String key = !s.id.isEmpty() ? s.id : (s.title + "|" + s.artist);
+        net.execute(() -> {
+            LrclibClient.Result r = LrclibClient.readCache(dir, key);
+            if (r == null) {
+                r = LrclibClient.fetch(s.title, s.artist, s.durSec);
+                LrclibClient.writeCache(dir, key, r);
+            }
+            final LrclibClient.Result result = r;
+            ui.post(() -> {
+                if (gen != lyricsGen) return;
+                if (result == null || !result.found()) {
+                    lyricsDoc = null;
+                    lyricsState.setText("Lyrics not found for this track.");
+                    lyricsBody.setText("");
+                    return;
+                }
+                if (result.synced != null) {
+                    lyricsDoc = Lrc.parse(result.synced);
+                    lyricsState.setText("Synced lyrics · LRCLIB");
+                } else {
+                    // Some LRCLIB "plain" records embed timestamps anyway —
+                    // label from what the parser actually found.
+                    lyricsDoc = Lrc.parse(result.plain);
+                    lyricsState.setText(lyricsDoc.synced
+                            ? "Synced lyrics · LRCLIB"
+                            : "Plain lyrics (not synced) · LRCLIB");
+                }
+                lastLyricIdx = -2;
+                renderLyrics(controller != null
+                        ? Math.max(0, controller.getCurrentPosition()) : 0);
+            });
+        });
+    }
+
+    private void updateLyricHighlight(long pos) {
+        if (lyricsDoc == null || !lyricsDoc.synced) return;
+        if (lyricsPanel == null || lyricsPanel.getVisibility() != View.VISIBLE) return;
+        int idx = lyricsDoc.indexAt(pos);
+        if (idx != lastLyricIdx) renderLyrics(pos);
+    }
+
+    private void renderLyrics(long pos) {
+        if (lyricsDoc == null || lyricsBody == null) return;
+        if (!lyricsDoc.synced) {
+            StringBuilder sb = new StringBuilder();
+            for (String line : lyricsDoc.plain) sb.append(line).append('\n');
+            lyricsBody.setText(sb.toString());
+            return;
+        }
+        int idx = lyricsDoc.indexAt(pos);
+        lastLyricIdx = idx;
+        android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+        for (int i = 0; i < lyricsDoc.lines.size(); i++) {
+            int start = sb.length();
+            sb.append(lyricsDoc.lines.get(i).text);
+            if (i == idx) {
+                sb.setSpan(new android.text.style.ForegroundColorSpan(Glass.ACCENT),
+                        start, sb.length(), android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                sb.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                        start, sb.length(), android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            sb.append('\n');
+        }
+        lyricsBody.setText(sb);
+        if (idx >= 0) {
+            lyricsBody.post(() -> {
+                android.text.Layout layout = lyricsBody.getLayout();
+                if (layout != null && idx < layout.getLineCount()) {
+                    int top = layout.getLineTop(idx);
+                    lyricsScroll.smoothScrollTo(0,
+                            Math.max(0, top - (int) Glass.dp(act, 56)));
+                }
+            });
+        }
     }
 }

@@ -31,3 +31,23 @@
 # our --lib is android-34, where it does not exist yet.
 -dontwarn android.media.LoudnessCodecController
 -dontwarn android.media.LoudnessCodecController$OnLoudnessCodecUpdateListener
+# Batch 2 — native games host + widgets (manifest-named components) and
+# the two libraries that resolve classes reflectively / are kept whole
+# defensively.
+-keep public class com.jackbhai.omnitools.nativ.games.GameActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.WidgetConfigActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.PlayerMiniWidgetProvider { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.PlayerBigWidgetProvider { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.VerseWidgetProvider { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.QuickToolsWidgetProvider { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.SongsSearchWidgetProvider { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.widget.DownloadsWidgetProvider { public <init>(); }
+-keep class org.jaudiotagger.** { *; }
+-keep class com.jackbhai.omnitools.nativ.audio.mcu.** { *; }
+# jaudiotagger is a desktop-origin library: its image-handling paths
+# reference AWT / ImageIO / Swing, which do not exist on Android. The
+# app never calls those paths (the tag view reads text + format fields
+# only), so the missing references are safe to ignore.
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**
+-dontwarn javax.swing.**
