@@ -53,6 +53,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -134,8 +135,13 @@ public final class SongsSection {
     private TextView vizNote;
 
     // ---- Phase 2: library / EQ / lyrics / accent (Track C) ----
-    private static final int SRC_STREAM = 0, SRC_LIBRARY = 1, SRC_FAVS = 2;
+    private static final int SRC_STREAM = 0, SRC_LIBRARY = 1, SRC_FAVS = 2, SRC_PLAYLISTS = 3;
     private int sourceMode = SRC_STREAM;
+    private final List<PlaylistStore.Playlist> playlists = new ArrayList<>();
+    private String openPlaylistId = null;
+    private RecyclerView songList;
+    private LinearLayout playlistBar;
+    private final PlaylistAdapter playlistAdapter = new PlaylistAdapter();
     private TextView[] sourceChips;
     private TextView rescanChip;
     private LinearLayout groupBar;
@@ -185,6 +191,9 @@ public final class SongsSection {
         crossfadeSec = audioPrefs.getFloat("crossfade_sec", 0f);
         skipSilence = audioPrefs.getBoolean("skip_silence", false);
         loadFavourites();
+        // WS0: playlist init is best-effort — a failure here must leave
+        // every other Songs mode fully usable.
+        try { playlists.addAll(PlaylistStore.load(act)); } catch (Throwable ignored) {}
         build();
         connectController();
     }
@@ -256,7 +265,7 @@ public final class SongsSection {
         LinearLayout srcRow = new LinearLayout(c);
         srcRow.setOrientation(LinearLayout.HORIZONTAL);
         srcRow.setGravity(Gravity.CENTER_VERTICAL);
-        String[] srcNames = {"Streaming", "Library", "Favourites"};
+        String[] srcNames = {"Streaming", "Library", "Favourites", "Playlists"};
         sourceChips = new TextView[srcNames.length];
         for (int i = 0; i < srcNames.length; i++) {
             final int mode = i;
@@ -324,7 +333,19 @@ public final class SongsSection {
         gbLp.topMargin = (int) Glass.dp(c, 6);
         col.addView(groupBar, gbLp);
 
+        // Playlists action bar (playlists mode only): New playlist at the
+        // root level; Back / Play all / Shuffle / Rename / Delete inside one.
+        playlistBar = new LinearLayout(c);
+        playlistBar.setOrientation(LinearLayout.HORIZONTAL);
+        playlistBar.setGravity(Gravity.CENTER_VERTICAL);
+        playlistBar.setVisibility(View.GONE);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        pbLp.topMargin = (int) Glass.dp(c, 6);
+        col.addView(playlistBar, pbLp);
+
         RecyclerView list = new RecyclerView(c);
+        songList = list;
         list.setLayoutManager(new LinearLayoutManager(c));
         list.setAdapter(adapter);
         LinearLayout.LayoutParams listLp = new LinearLayout.LayoutParams(
@@ -727,10 +748,17 @@ public final class SongsSection {
         adapter.notifyDataSetChanged();
     }
 
-    private void refreshList() { adapter.notifyDataSetChanged(); }
+    private void refreshList() {
+        adapter.notifyDataSetChanged();
+        playlistAdapter.notifyDataSetChanged();
+    }
     private List<Song> visible() {
         if (sourceMode == SRC_FAVS) return favourites;
         if (sourceMode == SRC_LIBRARY) return librarySongs();
+        if (sourceMode == SRC_PLAYLISTS) {
+            PlaylistStore.Playlist open = openPlaylist();
+            return open != null ? open.songs : Collections.emptyList();
+        }
         return rows;
     }
 
@@ -1020,18 +1048,215 @@ public final class SongsSection {
             h.sub.setText(s.artist + (s.album.isEmpty() ? "" : " · " + s.album));
             Img.load(s.art, h.art);
             boolean fav = isFav(s);
+            h.fav.setVisibility(View.VISIBLE);
             h.fav.setText(fav ? "Saved" : "Save");
             h.fav.setBackground(Glass.neonPill(act, fav ? Glass.NEON_VIOLET : Glass.NEON_CYAN));
             h.fav.setOnClickListener(v -> toggleFav(s));
             h.itemView.setOnClickListener(v -> playFrom(new ArrayList<>(visible()), idx));
-            if (sourceMode == SRC_LIBRARY) {
-                h.itemView.setOnLongClickListener(v -> { showTagSheet(s); return true; });
+            if (sourceMode == SRC_PLAYLISTS && openPlaylistId != null) {
+                final PlaylistStore.Playlist pl = openPlaylist();
+                h.itemView.setOnLongClickListener(v -> {
+                    if (pl != null) showPlaylistSongMenu(pl, s, idx);
+                    return true;
+                });
+            } else if (sourceMode == SRC_LIBRARY) {
+                h.itemView.setOnLongClickListener(v -> { showLibrarySongMenu(s); return true; });
+            } else if (sourceMode == SRC_STREAM || sourceMode == SRC_FAVS) {
+                h.itemView.setOnLongClickListener(v -> { showAddToPlaylist(s); return true; });
             } else {
                 h.itemView.setOnLongClickListener(null);
             }
         }
 
         @Override public int getItemCount() { return visible().size(); }
+    }
+
+    /** Playlist rows (name + song count) shown at the playlists root. */
+    private final class PlaylistAdapter extends RecyclerView.Adapter<VH> {
+        @Override public VH onCreateViewHolder(ViewGroup parent, int vt) {
+            return adapter.onCreateViewHolder(parent, vt);
+        }
+
+        @Override public void onBindViewHolder(VH h, int pos) {
+            final PlaylistStore.Playlist p = playlists.get(pos);
+            h.title.setText(p.name);
+            h.sub.setText(p.songs.size() + (p.songs.size() == 1 ? " song" : " songs"));
+            h.art.setImageDrawable(null);
+            h.fav.setVisibility(View.GONE);
+            h.itemView.setOnClickListener(v -> openPlaylist(p));
+            h.itemView.setOnLongClickListener(null);
+        }
+
+        @Override public int getItemCount() { return playlists.size(); }
+    }
+
+    /* ------------------------------------------------------------ playlists */
+
+    private PlaylistStore.Playlist openPlaylist() {
+        return openPlaylistId == null ? null : PlaylistStore.find(playlists, openPlaylistId);
+    }
+
+    private void savePlaylists() { PlaylistStore.save(act, playlists); }
+
+    private void openPlaylist(PlaylistStore.Playlist p) {
+        openPlaylistId = p.id;
+        if (songList != null) songList.setAdapter(adapter);
+        rebuildPlaylistBar();
+        status.setText(p.name + " · " + p.songs.size() + " songs");
+        refreshList();
+    }
+
+    private void closePlaylist() {
+        openPlaylistId = null;
+        if (songList != null) songList.setAdapter(playlistAdapter);
+        rebuildPlaylistBar();
+        status.setText(playlists.size() + " playlists");
+        refreshList();
+    }
+
+    private void rebuildPlaylistBar() {
+        if (playlistBar == null) return;
+        playlistBar.removeAllViews();
+        if (sourceMode != SRC_PLAYLISTS) {
+            playlistBar.setVisibility(View.GONE);
+            return;
+        }
+        playlistBar.setVisibility(View.VISIBLE);
+        final PlaylistStore.Playlist open = openPlaylist();
+        if (open == null) {
+            TextView nw = mkChip(act, "New playlist", Glass.NEON_CYAN);
+            nw.setOnClickListener(v -> { Sfx.tap(); promptNewPlaylist(null); });
+            playlistBar.addView(nw, chipLp(act, true));
+            return;
+        }
+        TextView back = mkChip(act, "Back", Glass.NEON_VIOLET);
+        back.setOnClickListener(v -> { Sfx.tap(); closePlaylist(); });
+        playlistBar.addView(back, chipLp(act, true));
+        TextView playAll = mkChip(act, "Play all", Glass.NEON_CYAN);
+        playAll.setOnClickListener(v -> {
+            if (!open.songs.isEmpty()) playFrom(new ArrayList<>(open.songs), 0);
+            else status.setText("This playlist is empty.");
+        });
+        playlistBar.addView(playAll, chipLp(act, false));
+        TextView shuffle = mkChip(act, "Shuffle", Glass.NEON_CYAN);
+        shuffle.setOnClickListener(v -> {
+            if (open.songs.isEmpty()) { status.setText("This playlist is empty."); return; }
+            List<Song> copy = new ArrayList<>(open.songs);
+            Collections.shuffle(copy);
+            playFrom(copy, 0);
+        });
+        playlistBar.addView(shuffle, chipLp(act, false));
+        TextView rename = mkChip(act, "Rename", Glass.NEON_VIOLET);
+        rename.setOnClickListener(v -> promptRenamePlaylist(open));
+        playlistBar.addView(rename, chipLp(act, false));
+        TextView del = mkChip(act, "Delete", Glass.NEON_VIOLET);
+        del.setOnClickListener(v -> confirmDeletePlaylist(open));
+        playlistBar.addView(del, chipLp(act, false));
+    }
+
+    private void promptNewPlaylist(final Song thenAdd) {
+        final EditText input = new EditText(act);
+        input.setHint("Playlist name");
+        input.setSingleLine(true);
+        new AlertDialog.Builder(act)
+                .setTitle("New playlist")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Create", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) { status.setText("Playlist name cannot be empty."); return; }
+                    PlaylistStore.Playlist p = PlaylistStore.create(playlists, name);
+                    if (thenAdd != null) PlaylistStore.addSong(playlists, p.id, thenAdd);
+                    savePlaylists();
+                    rebuildPlaylistBar();
+                    refreshList();
+                    status.setText(thenAdd != null
+                            ? "Added to " + p.name : "Playlist created: " + p.name);
+                })
+                .show();
+    }
+
+    private void promptRenamePlaylist(final PlaylistStore.Playlist p) {
+        final EditText input = new EditText(act);
+        input.setText(p.name);
+        input.setSingleLine(true);
+        new AlertDialog.Builder(act)
+                .setTitle("Rename playlist")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Rename", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) { status.setText("Playlist name cannot be empty."); return; }
+                    PlaylistStore.rename(playlists, p.id, name);
+                    savePlaylists();
+                    rebuildPlaylistBar();
+                    refreshList();
+                    status.setText("Renamed to " + name);
+                })
+                .show();
+    }
+
+    private void confirmDeletePlaylist(final PlaylistStore.Playlist p) {
+        new AlertDialog.Builder(act)
+                .setTitle("Delete playlist")
+                .setMessage("Delete \"" + p.name + "\" and its "
+                        + p.songs.size() + " songs? The songs themselves are not deleted.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Delete", (d, w) -> {
+                    PlaylistStore.delete(playlists, p.id);
+                    savePlaylists();
+                    status.setText("Playlist deleted: " + p.name);
+                    closePlaylist();
+                })
+                .show();
+    }
+
+    private void showAddToPlaylist(final Song s) {
+        List<String> labels = new ArrayList<>();
+        for (PlaylistStore.Playlist p : playlists) labels.add(p.name);
+        labels.add("New playlist…");
+        new AlertDialog.Builder(act)
+                .setTitle("Add to playlist…")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    if (which == playlists.size()) { promptNewPlaylist(s); return; }
+                    PlaylistStore.Playlist p = playlists.get(which);
+                    boolean added = PlaylistStore.addSong(playlists, p.id, s);
+                    savePlaylists();
+                    status.setText(added ? "Added to " + p.name
+                            : "Already in " + p.name);
+                })
+                .show();
+    }
+
+    private void showLibrarySongMenu(final Song s) {
+        new AlertDialog.Builder(act)
+                .setTitle(s.title)
+                .setItems(new String[]{"Add to playlist…", "View tags"}, (d, which) -> {
+                    if (which == 0) showAddToPlaylist(s);
+                    else showTagSheet(s);
+                })
+                .show();
+    }
+
+    private void showPlaylistSongMenu(final PlaylistStore.Playlist pl,
+                                      final Song s, final int idx) {
+        new AlertDialog.Builder(act)
+                .setTitle(s.title)
+                .setItems(new String[]{"Remove from playlist", "Move up", "Move down"},
+                        (d, which) -> {
+                            boolean changed;
+                            if (which == 0) changed = PlaylistStore.removeSong(playlists, pl.id, idx);
+                            else if (which == 1) changed = PlaylistStore.move(playlists, pl.id, idx, idx - 1);
+                            else changed = PlaylistStore.move(playlists, pl.id, idx, idx + 1);
+                            if (changed) {
+                                savePlaylists();
+                                refreshList();
+                            } else if (which != 0) {
+                                status.setText(which == 1 ? "Already at the top."
+                                        : "Already at the bottom.");
+                            }
+                        })
+                .show();
     }
 
     /* ============================================================
@@ -1062,14 +1287,23 @@ public final class SongsSection {
         boolean lib = mode == SRC_LIBRARY;
         groupBar.setVisibility(lib ? View.VISIBLE : View.GONE);
         rescanChip.setVisibility(lib ? View.VISIBLE : View.GONE);
-        if (mode == SRC_FAVS) {
-            status.setText(favourites.size() + " saved songs");
-        } else if (lib) {
-            ensureLibrary();
+        if (mode == SRC_PLAYLISTS) {
+            openPlaylistId = null;
+            if (songList != null) songList.setAdapter(playlistAdapter);
+            status.setText(playlists.size() + " playlists");
         } else {
-            status.setText(rows.isEmpty()
-                    ? "Search any song, artist or film" : rows.size() + " songs");
+            openPlaylistId = null;
+            if (songList != null) songList.setAdapter(adapter);
+            if (mode == SRC_FAVS) {
+                status.setText(favourites.size() + " saved songs");
+            } else if (lib) {
+                ensureLibrary();
+            } else {
+                status.setText(rows.isEmpty()
+                        ? "Search any song, artist or film" : rows.size() + " songs");
+            }
         }
+        rebuildPlaylistBar();
         refreshList();
     }
 

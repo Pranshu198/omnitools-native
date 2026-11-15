@@ -5,4 +5,7 @@
     <files-path name="files" path="." />
     <cache-path name="cache" path="." />
     <external-files-path name="extfiles" path="." />
+    <!-- Batch 4 (v3.3): BackupManager shares the backup file it wrote to
+         public Downloads on API 26-28 through this provider. -->
+    <external-path name="downloads" path="Download/" />
 </paths>

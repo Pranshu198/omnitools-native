@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31+) splash: the staged identity pack's artwork
+     colour (#0A0A14) + the adaptive icon. On API 31+ this style replaces
+     the base AppTheme wholesale (qualifier styles do not merge), so the
+     base items are repeated. -->
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">#FF070B14</item>
+        <item name="android:navigationBarColor">#FF070B14</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowSplashScreenBackground">#FF0A0A14</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#FF0A0A14</item>
+    </style>
+</resources>

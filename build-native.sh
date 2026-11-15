@@ -24,8 +24,8 @@ BT="$SDK/build-tools/34.0.0"
 ANDROID_JAR="$SDK/platforms/android-34/android.jar"
 export PATH="$JAVA_HOME/bin:$PATH"
 
-VERSION_CODE=3
-VERSION_NAME="3.2-native.1"
+VERSION_CODE=4
+VERSION_NAME="3.3-native.1"
 APK_NAME="OmniTools-${VERSION_NAME}.apk"
 KS_DIR="${OMNI_KS_DIR:-$HOME/workspace/omnitools-app/keystore}"
 NDK_HOME="${NDK_HOME:-$HOME/workspace/toolchain-ndk/android-ndk-r27c}"

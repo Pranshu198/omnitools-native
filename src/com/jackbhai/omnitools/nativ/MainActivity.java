@@ -31,19 +31,27 @@ import eightbitlab.com.blurview.BlurView;
  * behind it — live, via Dimezis BlurView (RenderEffect on API 31+,
  * OpenGL on 29-30, RenderScript below).
  *
- * Startup security, in order:
- *  1. Signature self-check — the running app's signing certificate must
- *     match the OmniTools release signer (checked in Sec, natively when
- *     libomnisec is present). A positive mismatch refuses the main UI
- *     with a plain notice. An unreadable certificate fails OPEN: a
- *     PackageManager quirk must never lock out the genuine build.
- *  2. Dex integrity + anti-hook checks (Guard) run async and gate only
- *     the sensitive paths (search / resolve / playback), never the UI.
+ * Startup, hardened (WS0, v3.3 — v3.2 died instantly on the user's
+ * Realme 13 Pro before any UI appeared):
+ *  - NOTHING on the launch path may throw, exit, or block. Every stage
+ *    (sounds, signature gate, dex thread, blur shell, section creation,
+ *    update check) is wrapped; every check fails OPEN.
+ *  - The signature refusal screen is shown ONLY when the check cleanly
+ *    returns false — any throwable on that path reads as "genuine".
+ *  - A crash-loop breaker (prefs "omni_launch_guard") counts launches
+ *    that start but never reach a stable first frame, and progressively
+ *    disables the risky extras — blur first, then the security threads,
+ *    then sounds — until the app opens plain. A stable launch resets it.
  */
 public class MainActivity extends Activity {
 
+    /** Request code for the backup-restore document picker (MenuSection). */
+    public static final int REQ_RESTORE_BACKUP = 9031;
+
     /** The root BlurTarget, exposed so section-level glass (the Songs
-     *  player bar) can blur against the same backdrop. */
+     *  player bar) can blur against the same backdrop. Null whenever the
+     *  plain (no-blur) shell is in use — consumers must null-check, and
+     *  SongsSection already does. */
     public static BlurTarget blurTarget;
 
     /** Full-screen ambient backdrop: deep gradient + two soft neon glows. */
@@ -72,63 +80,169 @@ public class MainActivity extends Activity {
     private GlassNavView nav;
     private int current = -1;
 
+    /* ------------------------------------------------ WS0 launch guard */
+
+    private static final String GUARD_PREFS = "omni_launch_guard";
+    private boolean useBlur = true;
+    private boolean minimalMode = false;
+    private boolean bootMarkedStable = false;
+
+    /** Reads the strike count and arms the boot marker. A previous
+     *  launch that set the marker but never marked stable counts as one
+     *  strike. Fully guarded: the guard itself must never throw. */
+    private int armBootGuard() {
+        try {
+            android.content.SharedPreferences g =
+                    getSharedPreferences(GUARD_PREFS, MODE_PRIVATE);
+            int strikes = g.getBoolean("boot_started", false)
+                    ? g.getInt("strikes", 0) + 1 : g.getInt("strikes", 0);
+            g.edit().putBoolean("boot_started", true)
+                    .putInt("strikes", strikes).apply();
+            return strikes;
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
+    /** Marks this launch stable (called ~1 s after the first section is
+     *  shown, so a crash during the first draw still counts as a failed
+     *  launch) and resets the strike counter. */
+    private void markBootStable() {
+        if (bootMarkedStable) return;
+        bootMarkedStable = true;
+        try {
+            getSharedPreferences(GUARD_PREFS, MODE_PRIVATE).edit()
+                    .putBoolean("boot_started", false)
+                    .putInt("strikes", 0).apply();
+        } catch (Throwable ignored) {}
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Sfx.init(this);
 
-        // 1) Signature self-check — refuse the main UI on a real mismatch.
-        if (!Sec.sigOk(signerDigest())) {
-            showRefusal();
+        // 0) Crash-loop breaker first: degrade by strikes from earlier
+        //    failed launches. strikes>=1: no blur. >=2: also skip the
+        //    security calls entirely. >=3: minimal mode (no sounds).
+        int strikes = armBootGuard();
+        useBlur = strikes < 1;
+        minimalMode = strikes >= 3;
+        boolean skipSecurity = strikes >= 2;
+
+        // 1) Sounds — a sound problem must never kill the launch.
+        if (!minimalMode) {
+            try { Sfx.init(this); } catch (Throwable ignored) {}
+        }
+
+        // 2) Signature self-check — FAIL OPEN on any throwable; the
+        //    refusal screen appears ONLY on a clean `false`.
+        boolean genuine = true;
+        if (!skipSecurity) {
+            try { genuine = Sec.sigOk(signerDigest()); }
+            catch (Throwable ignored) { genuine = true; }
+        }
+        if (!genuine) {
+            try { showRefusal(); } catch (Throwable ignored) {}
+            markBootStable();
             return;
         }
-        // 2) Dex integrity (async; gates sensitive paths only).
-        Guard.verifyDexAsync(this);
-
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                        != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{
-                    android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        // 3) Dex integrity (async; gates sensitive paths only, and even
+        //    starting the thread is guarded).
+        if (!skipSecurity) {
+            try { Guard.verifyDexAsync(this); } catch (Throwable ignored) {}
         }
 
-        FrameLayout root = new FrameLayout(this);
+        try {
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                            != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+            }
+        } catch (Throwable ignored) {}
 
-        blurTarget = new BlurTarget(this);
-        blurTarget.addView(new AmbientView(this), new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        FrameLayout root = new FrameLayout(this);
         int navH = (int) Glass.dp(this, 88);
         content = new FrameLayout(this);
         FrameLayout.LayoutParams contentLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
         contentLp.bottomMargin = navH;
-        blurTarget.addView(content, contentLp);
-        root.addView(blurTarget, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        BlurView navBlur = new BlurView(this);
         nav = new GlassNavView(this);
-        navBlur.addView(nav, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         FrameLayout.LayoutParams stripLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, navH);
         stripLp.gravity = Gravity.BOTTOM;
-        root.addView(navBlur, stripLp);
-        navBlur.setupWith(blurTarget)
-                .setFrameClearDrawable(new ColorDrawable(Color.rgb(7, 11, 20)))
-                .setBlurRadius(20f)
-                .setOverlayColor(Color.argb(30, 10, 15, 26));
+
+        boolean blurred = false;
+        if (useBlur) {
+            try {
+                blurTarget = new BlurTarget(this);
+                blurTarget.addView(new AmbientView(this), new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+                blurTarget.addView(content, contentLp);
+                root.addView(blurTarget, new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
+                BlurView navBlur = new BlurView(this);
+                navBlur.addView(nav, new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+                root.addView(navBlur, stripLp);
+                navBlur.setupWith(blurTarget)
+                        .setFrameClearDrawable(new ColorDrawable(Color.rgb(7, 11, 20)))
+                        .setBlurRadius(20f)
+                        .setOverlayColor(Color.argb(30, 10, 15, 26));
+                blurred = true;
+            } catch (Throwable ignored) {
+                blurred = false;
+                blurTarget = null;
+            }
+        }
+        if (!blurred) {
+            // Plain shell: same layout contract, no BlurView anywhere.
+            root.setBackgroundColor(Color.rgb(7, 11, 20));
+            root.addView(new AmbientView(this), new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            root.addView(content, contentLp);
+            FrameLayout strip = new FrameLayout(this);
+            strip.setBackgroundColor(Color.rgb(10, 15, 26));
+            strip.addView(nav, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            root.addView(strip, stripLp);
+        }
 
         setContentView(root);
 
         nav.setOnTab(idx -> {
-            Sfx.tab();
+            try { Sfx.tab(); } catch (Throwable ignored) {}
             showSection(idx);
         });
         int initial = tabForSection(getIntent() == null ? null
                 : getIntent().getStringExtra("open_section"));
         showSection(initial);
         nav.select(initial, false);
+
+        // Automatic update check (throttled to once per day, silent on
+        // failure; itself best-effort, and the call is guarded too).
+        try {
+            com.jackbhai.omnitools.nativ.update.UpdateChecker.maybeCheck(this);
+        } catch (Throwable ignored) {}
+
+        // The launch counts as stable once the UI has survived ~1 s —
+        // late enough that a first-draw crash still registers a strike.
+        content.postDelayed(this::markBootStable, 1000);
+    }
+
+    /** Forwards the backup-restore picker result to BackupManager.
+     *  Note: after a restore the running sections hold in-memory copies
+     *  of the old values, so the user should reopen sections / restart
+     *  the app to see the restored values. */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_RESTORE_BACKUP && resultCode == RESULT_OK
+                && data != null && data.getData() != null) {
+            com.jackbhai.omnitools.nativ.backup.BackupManager.importAsync(this, data.getData());
+        }
     }
 
     /** Widget deep links: a home-screen widget tap arrives with an
@@ -178,7 +292,7 @@ public class MainActivity extends Activity {
             StringBuilder sb = new StringBuilder(d.length * 2);
             for (byte b : d) sb.append(String.format("%02x", b));
             return sb.toString();
-        } catch (Exception e) {
+        } catch (Throwable e) {
             return null;
         }
     }
@@ -220,18 +334,38 @@ public class MainActivity extends Activity {
     private View sectionAt(int tab) {
         if (sections[tab] != null) return sections[tab];
         View v;
-        switch (tab) {
-            case GlassNavView.TAB_TV:         v = new TvSection(this).view(); break;
-            case GlassNavView.TAB_DOWNLOADER: v = new DownloaderSection(this).view(); break;
-            case GlassNavView.TAB_GAMES:      v = new GamesSection(this).view(); break;
-            case GlassNavView.TAB_MENU:       v = new MenuSection(this).view(); break;
-            case GlassNavView.TAB_SONGS:
-            default:                          v = new SongsSection(this).view(); break;
+        // WS0: one broken section must never kill the app — substitute a
+        // plain placeholder and let the other tabs work.
+        try {
+            switch (tab) {
+                case GlassNavView.TAB_TV:         v = new TvSection(this).view(); break;
+                case GlassNavView.TAB_DOWNLOADER: v = new DownloaderSection(this).view(); break;
+                case GlassNavView.TAB_GAMES:      v = new GamesSection(this).view(); break;
+                case GlassNavView.TAB_MENU:       v = new MenuSection(this).view(); break;
+                case GlassNavView.TAB_SONGS:
+                default:                          v = new SongsSection(this).view(); break;
+            }
+        } catch (Throwable t) {
+            v = sectionPlaceholder();
         }
         sections[tab] = v;
         content.addView(v, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         return v;
+    }
+
+    /** Fallback view for a section whose construction failed. */
+    private View sectionPlaceholder() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER);
+        Glass.pad(col, this, 28, 28, 28, 28);
+        TextView t = Glass.text(this,
+                "This section could not start. Please try another tab, "
+                + "or reopen the app.", 14.5f, Glass.TEXT_DIM, false);
+        t.setGravity(Gravity.CENTER);
+        col.addView(t);
+        return col;
     }
 
     private void showSection(int tab) {

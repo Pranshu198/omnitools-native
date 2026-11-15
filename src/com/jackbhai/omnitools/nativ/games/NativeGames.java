@@ -10,7 +10,10 @@ import android.view.View;
 public final class NativeGames {
     private static final String[] IDS = {
             "g2048", "snake", "mines", "memory", "ttt",
-            "breakout", "flappy", "slide15", "simon", "reaction"
+            "breakout", "flappy", "slide15", "simon", "reaction",
+            "checkers", "sudoku", "connect4", "reversi", "lightsout",
+            "mastermind", "hangman", "wordguess", "pong", "bubbleshoot",
+            "nummerge", "nonogram", "blockfall", "asteroids", "hopper"
     };
 
     private NativeGames() {}
@@ -44,6 +47,21 @@ public final class NativeGames {
             case "slide15": return new SlideView(c);
             case "simon": return new SimonView(c);
             case "reaction": return new ReactionView(c);
+            case "checkers": return new CheckersView(c);
+            case "sudoku": return new SudokuView(c);
+            case "connect4": return new Connect4View(c);
+            case "reversi": return new ReversiView(c);
+            case "lightsout": return new LightsOutView(c);
+            case "mastermind": return new MastermindView(c);
+            case "hangman": return new HangmanView(c);
+            case "wordguess": return new WordGuessView(c);
+            case "pong": return new PongView(c);
+            case "bubbleshoot": return new BubbleShooterView(c);
+            case "nummerge": return new NumberMergeView(c);
+            case "nonogram": return new NonogramView(c);
+            case "blockfall": return new BlockFallView(c);
+            case "asteroids": return new AsteroidsView(c);
+            case "hopper": return new HopperView(c);
             default: return null;
         }
     }

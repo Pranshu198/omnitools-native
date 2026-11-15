@@ -64,3 +64,6 @@
 -keep class com.google.zxing.** { *; }
 # Batch 3 Track C — visualizer: JNI binds by name; keep the package.
 -keep class com.jackbhai.omnitools.nativ.viz.** { *; }
+# Batch 4 (v3.3) WS5 — Online Games (manifest-named activities).
+-keep public class com.jackbhai.omnitools.nativ.online.OnlineGamesActivity { public <init>(); }
+-keep public class com.jackbhai.omnitools.nativ.online.OnlineGameActivity { public <init>(); }

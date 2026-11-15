@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.jackbhai.omnitools.nativ.games.NativeGames;
+import com.jackbhai.omnitools.nativ.online.OnlineGamesActivity;
 
 /**
  * Games — Phase-1 bridge, labelled honestly as such in the UI.
@@ -51,6 +52,28 @@ public final class GamesSection {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         subLp.topMargin = (int) Glass.dp(c, 6);
         col.addView(sub, subLp);
+
+        // Online Games (GamePix) — a separate web catalogue, needs internet.
+        LinearLayout online = new LinearLayout(c);
+        online.setOrientation(LinearLayout.VERTICAL);
+        online.setBackground(Glass.panelStrong(c, 16));
+        Glass.pad(online, c, 14, 14, 14, 14);
+        online.addView(Glass.text(c, "Online Games", 16.5f, Glass.TEXT, true));
+        TextView onlineSub = Glass.text(c,
+                "Online game \u2014 needs internet \u00B7 provided by GamePix",
+                12, Glass.NEON_CYAN, false);
+        LinearLayout.LayoutParams osLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        osLp.topMargin = (int) Glass.dp(c, 4);
+        online.addView(onlineSub, osLp);
+        online.setOnClickListener(v -> {
+            Sfx.tap();
+            act.startActivity(new Intent(act, OnlineGamesActivity.class));
+        });
+        LinearLayout.LayoutParams onLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        onLp.topMargin = (int) Glass.dp(c, 12);
+        col.addView(online, onLp);
 
         RecyclerView grid = new RecyclerView(c);
         grid.setLayoutManager(new GridLayoutManager(c, 2));

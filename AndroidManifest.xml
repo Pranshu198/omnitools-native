@@ -21,11 +21,16 @@
     <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- Batch 4 (v3.3): Backup export writes to public Downloads on
+         API 26-28 (MediaStore needs no permission on 29+). -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
 
@@ -52,6 +57,16 @@
 
         <activity
             android:name="com.jackbhai.omnitools.nativ.games.GameActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Batch 4 (v3.3) WS5: Online Games (GamePix) catalogue + player -->
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.online.OnlineGamesActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity
+            android:name="com.jackbhai.omnitools.nativ.online.OnlineGameActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 

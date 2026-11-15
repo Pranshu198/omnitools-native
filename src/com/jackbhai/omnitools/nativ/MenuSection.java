@@ -3,6 +3,7 @@ package com.jackbhai.omnitools.nativ;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -100,6 +101,42 @@ public final class MenuSection {
         setLp.topMargin = (int) Glass.dp(c, 10);
         col.addView(setRow, setLp);
 
+        // Settings row: Check for updates (chip shows current version).
+        String versionName = "";
+        try {
+            PackageInfo pi = act.getPackageManager().getPackageInfo(act.getPackageName(), 0);
+            if (pi.versionName != null) versionName = pi.versionName;
+        } catch (Exception ignored) {}
+        LinearLayout updRow = settingsRow(c, "Check for updates", versionName,
+                v -> com.jackbhai.omnitools.nativ.update.UpdateChecker.checkNow(act));
+        LinearLayout.LayoutParams updLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        updLp.topMargin = (int) Glass.dp(c, 10);
+        col.addView(updRow, updLp);
+
+        // Settings row: Back up data.
+        LinearLayout backupRow = settingsRow(c, "Back up data", "Save",
+                v -> com.jackbhai.omnitools.nativ.backup.BackupManager.exportAndShare(act));
+        LinearLayout.LayoutParams backupLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        backupLp.topMargin = (int) Glass.dp(c, 10);
+        col.addView(backupRow, backupLp);
+
+        // Settings row: Restore backup. After a restore the running
+        // sections hold in-memory copies, so the user should reopen
+        // sections / restart the app to see restored values.
+        LinearLayout restoreRow = settingsRow(c, "Restore backup", "Open",
+                v -> {
+                    Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    it.addCategory(Intent.CATEGORY_OPENABLE);
+                    it.setType("application/json");
+                    act.startActivityForResult(it, MainActivity.REQ_RESTORE_BACKUP);
+                });
+        LinearLayout.LayoutParams restoreLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        restoreLp.topMargin = (int) Glass.dp(c, 10);
+        col.addView(restoreRow, restoreLp);
+
         EditText filter = new EditText(c);
         filter.setHint("Filter tools…");
         filter.setSingleLine(true);
@@ -129,6 +166,25 @@ public final class MenuSection {
         listLp.topMargin = (int) Glass.dp(c, 6);
         col.addView(list, listLp);
         root = col;
+    }
+
+    /** A settings row in the same style as the UI-sounds row: label on
+     *  the left, neon pill chip on the right; row and chip both tappable. */
+    private LinearLayout settingsRow(Context c, String label, String chipText,
+                                     View.OnClickListener listener) {
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView labelView = Glass.text(c, label, 13.5f, Glass.TEXT, false);
+        row.addView(labelView, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView chip = Glass.text(c, chipText, 13, Glass.TEXT, false);
+        chip.setBackground(Glass.neonPill(c, Glass.NEON_CYAN));
+        Glass.pad(chip, c, 14, 6, 14, 6);
+        chip.setOnClickListener(listener);
+        row.addView(chip);
+        row.setOnClickListener(listener);
+        return row;
     }
 
     private final class Holder extends RecyclerView.ViewHolder {

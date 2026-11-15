@@ -78,7 +78,14 @@ public final class Sec {
             try { return nSig(actualSha256HexLower); }
             catch (Throwable ignored) {}
         }
-        return Net.ep(EXPECTED_SIG_B64).equalsIgnoreCase(actualSha256HexLower);
+        // WS0 hardening: the Java fallback must be just as fail-open as
+        // the native path — a decode hiccup must never read as a
+        // signature mismatch (that path ends at the refusal screen).
+        try {
+            return Net.ep(EXPECTED_SIG_B64).equalsIgnoreCase(actualSha256HexLower);
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     /* ------------------------------------------------ dex integrity */
