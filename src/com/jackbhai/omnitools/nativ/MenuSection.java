@@ -1,0 +1,164 @@
+package com.jackbhai.omnitools.nativ;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Menu — every other OmniTools tool, grouped by category exactly as the
+ * PWA registry has them (110 tools; Music, Downloader, Games and Live TV
+ * are the native sections in the bottom nav, so they are not repeated
+ * here). Tapping a tool opens its bundled page in the native-hosted frame,
+ * so nothing from OmniTools is missing in this app.
+ */
+public final class MenuSection {
+
+    private final Activity act;
+    private View root;
+    private final Adapter adapter = new Adapter();
+    private final List<Object> display = new ArrayList<>(); // String header | Registry.Tool
+
+    public MenuSection(Activity act) {
+        this.act = act;
+        rebuild("");
+        build();
+    }
+
+    public View view() { return root; }
+
+    private void rebuild(String filter) {
+        display.clear();
+        Map<String, List<Registry.Tool>> byCat = new LinkedHashMap<>();
+        for (Registry.Tool t : Registry.TOOLS) {
+            if (!filter.isEmpty()
+                    && !t.name.toLowerCase(Locale.US).contains(filter)
+                    && !t.cat.toLowerCase(Locale.US).contains(filter)) continue;
+            byCat.computeIfAbsent(t.cat, k -> new ArrayList<>()).add(t);
+        }
+        for (Map.Entry<String, List<Registry.Tool>> e : byCat.entrySet()) {
+            display.add(e.getKey());
+            display.addAll(e.getValue());
+        }
+    }
+
+    private void build() {
+        Context c = act;
+        LinearLayout col = new LinearLayout(c);
+        col.setOrientation(LinearLayout.VERTICAL);
+        Glass.pad(col, c, 14, 12, 14, 8);
+
+        col.addView(Glass.text(c, "All Tools", 24, Glass.TEXT, true));
+        TextView sub = Glass.text(c, Registry.TOOLS.length
+                + " more tools, grouped by category. TV, Downloader, Games and Songs "
+                + "have their own tabs below.", 12.5f, Glass.TEXT_DIM, false);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = (int) Glass.dp(c, 6);
+        col.addView(sub, subLp);
+
+        EditText filter = new EditText(c);
+        filter.setHint("Filter tools…");
+        filter.setSingleLine(true);
+        filter.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        filter.setTextColor(Glass.TEXT);
+        filter.setHintTextColor(Glass.TEXT_DIM);
+        filter.setBackground(Glass.panel(c, 14));
+        Glass.pad(filter, c, 14, 10, 14, 10);
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fLp.topMargin = (int) Glass.dp(c, 10);
+        col.addView(filter, fLp);
+        filter.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int n) {
+                rebuild(s.toString().trim().toLowerCase(Locale.US));
+                adapter.notifyDataSetChanged();
+            }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        RecyclerView list = new RecyclerView(c);
+        list.setLayoutManager(new LinearLayoutManager(c));
+        list.setAdapter(adapter);
+        LinearLayout.LayoutParams listLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        listLp.topMargin = (int) Glass.dp(c, 6);
+        col.addView(list, listLp);
+        root = col;
+    }
+
+    private final class Holder extends RecyclerView.ViewHolder {
+        final TextView text;
+        final boolean header;
+        Holder(View v, TextView t, boolean h) { super(v); text = t; header = h; }
+    }
+
+    private final class Adapter extends RecyclerView.Adapter<Holder> {
+        @Override public int getItemViewType(int pos) {
+            return display.get(pos) instanceof String ? 0 : 1;
+        }
+
+        @Override public Holder onCreateViewHolder(ViewGroup parent, int vt) {
+            Context c = parent.getContext();
+            if (vt == 0) {
+                TextView t = Glass.text(c, "", 13, Glass.NEON_VIOLET, true);
+                RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                lp.topMargin = (int) Glass.dp(c, 14);
+                lp.bottomMargin = (int) Glass.dp(c, 4);
+                t.setLayoutParams(lp);
+                return new Holder(t, t, true);
+            }
+            LinearLayout row = new LinearLayout(c);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackground(Glass.panel(c, 14));
+            Glass.pad(row, c, 14, 12, 14, 12);
+            RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = (int) Glass.dp(c, 4);
+            lp.bottomMargin = (int) Glass.dp(c, 4);
+            row.setLayoutParams(lp);
+            TextView t = Glass.text(c, "", 15, Glass.TEXT, false);
+            row.addView(t, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            TextView open = Glass.text(c, "Open", 12.5f, Glass.NEON_CYAN, true);
+            row.addView(open);
+            return new Holder(row, t, false);
+        }
+
+        @Override public void onBindViewHolder(Holder h, int pos) {
+            Object item = display.get(pos);
+            if (item instanceof String) {
+                h.text.setText(((String) item).toUpperCase(Locale.US));
+                return;
+            }
+            Registry.Tool t = (Registry.Tool) item;
+            h.text.setText(t.name);
+            h.itemView.setOnClickListener(v -> {
+                Intent it = new Intent(act, WebFrameActivity.class);
+                it.putExtra(WebFrameActivity.EXTRA_ROUTE, t.id);
+                it.putExtra(WebFrameActivity.EXTRA_TITLE, t.name);
+                act.startActivity(it);
+            });
+        }
+
+        @Override public int getItemCount() { return display.size(); }
+    }
+}

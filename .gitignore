@@ -1,0 +1,6 @@
+build/
+assets/
+*.apk
+*.idsig
+smoke/classes/
+smoke/json.jar
